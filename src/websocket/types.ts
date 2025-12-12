@@ -3,7 +3,11 @@ export type WSMessagetType =
   | "question"
   | "artifact"
   | "error"
-  | "stage_transition";
+  | "stage_transition"
+  | "typing"
+  | "message"
+  | "screen_complete"
+  | "planning_complete";
 
 export interface WSMessage {
   type: WSMessagetType;

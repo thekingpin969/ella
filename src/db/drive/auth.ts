@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { OAuth2Client, Credentials } from "google-auth-library";
 
-const TOKEN_PATH = "../../../token.json";
+const TOKEN_PATH = "../../token.json";
 
 export const oauth2Client: OAuth2Client = new google.auth.OAuth2(
   process.env.DRIVE_API_KEY,
@@ -16,6 +16,7 @@ export async function getAuth(token: any = null): Promise<OAuth2Client> {
   if (token || existsSync(TOKEN_PATH)) {
     const driveToken = token ? token : JSON.parse(readFileSync(TOKEN_PATH, "utf-8")) as Credentials;
     oauth2Client.setCredentials(driveToken);
+    // console.log("[DB] Auth initialized", oauth2Client);
     return oauth2Client;
   }
   throw new Error("Run authorize() first");

@@ -3,9 +3,10 @@ import { zValidator } from "@hono/zod-validator";
 import { getDB } from "../../db/client";
 import { createProjectSchema } from "../../utils/validation";
 import { generateId } from "../../utils/id";
-import { stageEngine } from "../../mocks/stage-engine";
+// import { stageEngine } from "../../mocks/stage-engine";
 import { WithId } from "mongodb";
 import { createFolderAtPath } from "../../db/drive";
+import { stageEngine } from "../../engin";
 
 const createProject = new Hono();
 
@@ -19,7 +20,7 @@ createProject.post("/", zValidator("json", createProjectSchema), async (c) => {
   const projects = db.collection<WithId<any>>("projects");
 
   try {
-    const projectFolder = await createFolderAtPath('E.L.L.A/projects/' + body.name.replaceAll(' ', '_'))
+    const projectFolder: any = await createFolderAtPath('E.L.L.A/projects/' + body.name.replaceAll(' ', '_'))
     await projects.insertOne({
       _id: projectId,
       name: body.name,
@@ -32,15 +33,22 @@ createProject.post("/", zValidator("json", createProjectSchema), async (c) => {
       updated_at: now,
     });
 
+    stageEngine.createContext(
+      projectId,
+      body.name,
+      projectFolder,
+      body.description
+    );
+
     // Emit event to Stage Engine
-    // stageEngine.emitEvent({
-    //   type: "context_created",
-    //   projectId: projectId,
-    //   payload: {
-    //     description: body.description,
-    //     fileCount: body.files?.length || 0,
-    //   },
-    // });
+    stageEngine.emitEvent({
+      name: "context_created",
+      projectId: projectId,
+      payload: {
+        description: body.description,
+        fileCount: body.files?.length || 0,
+      },
+    });
 
     return c.json(
       {
@@ -52,6 +60,7 @@ createProject.post("/", zValidator("json", createProjectSchema), async (c) => {
       201,
     );
   } catch (err: any) {
+    // console.error(err);
     return c.json(
       {
         error: {

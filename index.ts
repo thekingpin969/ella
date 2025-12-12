@@ -1,12 +1,12 @@
 import { config } from 'dotenv'
-config({ path: '../.env' })
+// config({ path: './.env' })
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
-import { initMongoDB } from "./db/schema";
-import projectRoutes from "./routes/projects";
-import { wsManager } from "./websocket/manager";
+import { initMongoDB } from "./src/db/schema";
+import projectRoutes from "./src/routes/projects";
+import { wsManager } from "./src/websocket/manager";
 
 const app = new Hono();
 const { upgradeWebSocket, websocket } = createBunWebSocket<any>();
@@ -14,6 +14,8 @@ const { upgradeWebSocket, websocket } = createBunWebSocket<any>();
 // Middleware
 app.use("*", logger());
 app.use("*", cors());
+
+// await authorize()
 
 // Routes
 app.route("/api/projects", projectRoutes);
