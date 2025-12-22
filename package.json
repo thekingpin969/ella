@@ -8,8 +8,10 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@chroma-core/default-embed": "^0.1.9",
     "@hono/zod-validator": "^0.7.5",
     "@types/mongodb": "^4.0.7",
+    "chromadb": "^3.1.8",
     "dotenv": "^17.2.3",
     "google-auth-library": "^10.5.0",
     "googleapis": "^166.0.0",

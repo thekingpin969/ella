@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getDB } from "../../db/client";
+import { getDB } from "../../db/mongodb/client";
 import { DBArtifact } from "../../types/context";
 import { WithId } from "mongodb";
 

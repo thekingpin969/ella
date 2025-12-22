@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { getDB } from "../../db/client";
+import { getDB } from "../../db/mongodb/client";
 import { createProjectSchema } from "../../utils/validation";
 import { generateId } from "../../utils/id";
 // import { stageEngine } from "../../mocks/stage-engine";

@@ -142,9 +142,7 @@ export class PlanHandler extends BaseHandler {
     }
 
 
-    /**
-     * Complete a planning screen
-     */
+
     private completeScreen(context: Context, screenNumber: number): void {
         this.log(`Screen ${screenNumber} complete for ${context.projectId}`);
 

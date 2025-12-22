@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
-import { initMongoDB } from "./src/db/schema";
+import { initMongoDB } from "./src/db/mongodb/schema";
 import projectRoutes from "./src/routes/projects";
 import { wsManager } from "./src/websocket/manager";
 import { log } from 'console';
