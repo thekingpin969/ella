@@ -11,7 +11,7 @@ export abstract class BaseHandler {
     /**
      * Log with handler prefix
      */
-    protected log(message: string): void {
-        console.log(`[${this.constructor.name}] ${message}`);
+    protected log(...message: any): void {
+        console.log(`[${this.constructor.name}] `, message);
     }
 }

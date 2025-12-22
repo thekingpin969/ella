@@ -9,7 +9,10 @@ export type EventName =
 
     // Planning stage
     | "screen_complete"
+    | "answers_received"
+    | "start_initial_analysis"
     | "planning_complete"
+    | "user_response"
 
     // Implementation stage
     | "story_complete"

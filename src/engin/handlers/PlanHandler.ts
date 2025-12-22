@@ -2,6 +2,7 @@ import { BaseHandler } from "./BaseHandler";
 import { Context } from "../types/context";
 import { Event } from "../types/events";
 import { wsManager } from "../../websocket/manager";
+import { sleep } from "bun";
 
 export class PlanHandler extends BaseHandler {
 
@@ -12,28 +13,102 @@ export class PlanHandler extends BaseHandler {
             case "context_created":
                 this.onContextCreated(context, event);
                 break;
-
-            case "client_connected":
-                this.onClientConnected(context, event);
+            case "start_initial_analysis":
+                this.performInitialAnalysis(context, event);
                 break;
-
-            case "websocket_message":
-                this.onWebSocketMessage(context, event);
+            case "user_response":
+                this.onUserResponse(context, event);
                 break;
-
             case "screen_complete":
                 this.onScreenComplete(context, event);
                 break;
         }
     }
 
-    /**
-     * Project just created - initialize planning
-     */
+    private async performInitialAnalysis(context: Context, event: Event): Promise<void> {
+        this.log(`Starting initial analysis for ${context.projectId}`);
+
+        const description = event.payload.description;
+        wsManager.sendFiller(context.projectId, 'analysing project...')
+        const analysis = await this.createInitialContext(description);
+        context.planningData!.confidence = analysis.confidence;
+        wsManager.sendMessage(context.projectId, { message: analysis.message })
+        this.log(`Initial analysis complete: ${analysis.confidence}% confidence`);
+        if (analysis.confidence < 95) {
+            this.log('confidence is low, trying to increase confidence')
+            this.increaceConfidence(context, event)
+        } else {
+            this.log('have enough confidence to move to the next step')
+        }
+    }
+
+    private onUserResponse(context: Context, event: Event): void {
+        switch (event.name!) {
+            case "answers_received":
+                this.onAnswerReceived(context, event);
+                break;
+            case "websocket_message":
+                this.onWebSocketMessage(context, event);
+                break;
+            default:
+                this.log(`Unknown event: ${event.name}`);
+                break;
+        }
+    }
+
+    private async onAnswerReceived(context: Context, event: Event): Promise<void> {
+        this.log(`Answers received for ${context.projectId}`);
+        const { answers } = event.payload!
+        this.log(`Answers: ${answers}`);
+        const { confidence } = await this.updateContext(context, answers)
+        this.log(`Updated context: ${confidence}`);
+        if (confidence < 95) {
+            this.log('confidence is low, trying to increase confidence')
+            this.increaceConfidence(context, event)
+        } else {
+            this.log('have enough confidence to move to the next step')
+        }
+    }
+
+    private async updateContext(context: Context, answers: any[]): Promise<{ confidence: number; }> {
+        this.log(`Updating context for ${context.projectId}`);
+        return {
+            confidence: 40
+        }
+
+    }
+
+    private async increaceConfidence(context: Context, event: Event): Promise<void> {
+        this.log('analysing context to increase confidence...')
+        wsManager.sendFiller(context.projectId, 'finding gaps...')
+        await sleep(1000 * 10)
+        wsManager.sendFiller(context.projectId, 'trying to fill gaps...')
+        await sleep(1000 * 10)
+        wsManager.sendFiller(context.projectId, 'reserching on topics to fill gaps...')
+        await sleep(1000 * 10)
+        wsManager.sendFiller(context.projectId, 'finalysing reserch...')
+        await sleep(1000 * 10)
+        wsManager.sendFiller(context.projectId, 'need more clarity, preparing questions...')
+        await sleep(1000 * 10)
+        wsManager.sendMessage(context.projectId, { message: 'i have done my own research and still i need clarification from your side to fill out the gaps' })
+        wsManager.sendFiller(context.projectId, 'need more clarity, preparing questions...')
+        await sleep(1000 * 10)
+
+        this.log('increasing confidence through clarifying questions...')
+        this.log('genarating questions...')
+    }
+
+    private async createInitialContext(description: string): Promise<{ message: string; confidence: number; }> {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return {
+            message: `Hi! I've analyzed your idea. A we app for "${description}" thats an excelent saas idea!, but the information you gave to my was insuffitiant, it may force me to guess, to avoid that please gave me more information through the clarifiying quetions i ask, here are they`,
+            confidence: 20,
+        };
+    }
+
     private onContextCreated(context: Context, event: Event): void {
         this.log(`Planning session started for ${context.projectId}`);
 
-        // Initialize planning data if not exists
         if (!context.planningData) {
             context.planningData = {
                 currentScreen: 1,
@@ -42,28 +117,14 @@ export class PlanHandler extends BaseHandler {
                 initialDescription: event.payload.description
             };
         }
-
-        // WebSocket will be opened when user visits planning page
-        // Nothing else to do here - wait for client_connected
-    }
-
-    /**
-     * User opened planning page - send welcome message
-     */
-    private onClientConnected(context: Context, event: Event): void {
-        const screen = context.planningData!.currentScreen;
-        this.log(`Client connected for screen ${screen}`);
-
-        // Send welcome message based on current screen
-        this.sendWelcomeMessage(context, screen);
     }
 
     /**
      * User sent a message via WebSocket
      */
     private onWebSocketMessage(context: Context, event: Event): void {
-        const message = event.payload;
-
+        const { message } = event.payload;
+        this.log(event)
         if (message.type === "user_message") {
             this.handleUserMessage(context, message.content);
         }
@@ -73,147 +134,13 @@ export class PlanHandler extends BaseHandler {
      * Handle user message in chat
      */
     private async handleUserMessage(context: Context, userMessage: string): Promise<void> {
-        // 1. Add to message history
-        context.planningData!.messages.push({
-            role: "user",
-            content: userMessage,
-            timestamp: new Date().toISOString()
-        });
+        this.log('message recived..., handling it')
+        wsManager.sendMessage(context.projectId, { message: 'ok i will wait...' })
 
-        // 2. Show typing indicator
-        wsManager.broadcast(context.projectId, {
-            type: "typing",
-            timestamp: new Date().toISOString(),
-            data: { isTyping: true }
-        });
 
-        // 3. TODO: Call LLM here to analyze and respond
-        // For now, mock response
-        const mockResponse = this.generateMockResponse(context, userMessage);
 
-        // 4. Add assistant response to history
-        context.planningData!.messages.push({
-            role: "assistant",
-            content: mockResponse.message,
-            timestamp: new Date().toISOString()
-        });
-
-        // 5. Update confidence
-        context.planningData!.confidence = mockResponse.confidence;
-
-        // 6. Send response to client
-        wsManager.broadcast(context.projectId, {
-            type: "message",
-            timestamp: new Date().toISOString(),
-            data: {
-                role: "assistant",
-                content: mockResponse.message,
-                confidence: mockResponse.confidence
-            }
-        });
-
-        // 7. Check if screen complete
-        if (mockResponse.confidence >= 90) {
-            this.completeScreen(context, context.planningData!.currentScreen);
-        }
     }
 
-    /**
-     * Send welcome message for a screen
-     */
-    private sendWelcomeMessage(context: Context, screen: number): void {
-        let message = "";
-
-        switch (screen) {
-            case 1:
-                message = `Hi! I'm E.L.L.A. Let's understand your project together.
-
-I see you want to build: "${context.planningData!.initialDescription || "a new project"}"
-
-To help me understand better, please share:
-- What problem does this solve?
-- Who will use this?
-- Any specific features you have in mind?
-- Design preferences?
-- Technical constraints?
-
-You can upload documents, paste links, or just chat with me!`;
-                break;
-
-            case 2:
-                message = `Great work on understanding! Now let's define your UI/UX.
-
-Based on your project, I'll help you:
-- Choose a design mood
-- Gather inspirations
-- Create screen mockups
-- Generate design tokens
-
-What design style do you have in mind? (minimal, bold, playful, etc.)`;
-                break;
-
-            case 3:
-                message = `Excellent! Now let's validate the technical side.
-
-I'll help you:
-- Verify API compatibility
-- Check dependencies
-- Identify potential risks
-- Create integration checklist
-
-What tech stack are you planning to use?`;
-                break;
-        }
-
-        wsManager.broadcast(context.projectId, {
-            type: "message",
-            timestamp: new Date().toISOString(),
-            data: {
-                role: "assistant",
-                content: message,
-                confidence: context.planningData!.confidence
-            }
-        });
-    }
-
-    /**
-     * Generate mock LLM response (replace with real LLM later)
-     */
-    private generateMockResponse(context: Context, userMessage: string): {
-        message: string;
-        confidence: number;
-    } {
-        const messageCount = context.planningData!.messages.length;
-        const currentConfidence = context.planningData!.confidence;
-
-        // Simulate confidence increase
-        const newConfidence = Math.min(currentConfidence + 15, 100);
-
-        // Mock response based on screen
-        const screen = context.planningData!.currentScreen;
-        let message = "";
-
-        if (newConfidence < 90) {
-            message = `Thanks for sharing! I'm getting clearer (${newConfidence}% confidence).
-
-A few more questions to ensure I understand completely:
-1. [Mock question based on screen ${screen}]
-2. [Another clarifying question]
-
-The more details you provide, the better I can help build this!`;
-        } else {
-            message = `Perfect! I now have a complete understanding (${newConfidence}% confidence).
-
-Let me generate the artifacts for Screen ${screen}...
-
-✅ All information gathered
-✅ Ready to proceed
-
-[Generating documents...]`;
-        }
-
-        return { message, confidence: newConfidence };
-    }
 
     /**
      * Complete a planning screen
@@ -241,9 +168,6 @@ Let me generate the artifacts for Screen ${screen}...
                     ]
                 }
             });
-
-            // Send welcome message for next screen
-            this.sendWelcomeMessage(context, context.planningData!.currentScreen);
         } else {
             // All screens complete - planning done!
             this.completePlanning(context);

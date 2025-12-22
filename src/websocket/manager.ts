@@ -1,5 +1,6 @@
 import { ServerWebSocket } from "bun";
 import { WSMessage } from "./types";
+import { chatDB } from "../db/chatStorage";
 
 /**
  * Interface for the WebSocket context.
@@ -64,12 +65,13 @@ class WebSocketManager {
    */
   public broadcast(projectId: string, message: WSMessage) {
     const projectConns = this.connections.get(projectId);
-    if (!projectConns) return;
+    if (!projectConns) return console.log(projectConns);
 
     const payload = JSON.stringify(message);
     for (const ws of projectConns) {
       if (ws.readyState === 1) {
         // Open
+        console.log(payload);
         ws.send(payload);
       }
     }
@@ -94,6 +96,92 @@ class WebSocketManager {
       }
     }, interval);
   }
+
+  public sendMessage(projectId: string, { message }: { message: string | number | null }) {
+    const projectConns = this.connections.get(projectId);
+    const payload = {
+      type: "message",
+      timestamp: new Date().toISOString(),
+      data: {
+        role: "assistant",
+        content: message,
+      }
+    }
+    chatDB.saveMessage({
+      projectId,
+      content: payload.data.content,
+      role: payload.data.role as any,
+      screen: 1,
+      timestamp: payload.timestamp,
+      type: payload.type
+    })
+    if (!projectConns) return console.log('no clients for ', projectId);
+    for (const ws of projectConns) {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify(payload));
+      }
+    }
+
+    return { sendAmount: projectConns }
+  }
+
+  public askQuestion(projectId: string, { questions }: { questions: any[] }) {
+    const projectConns = this.connections.get(projectId);
+    const payload = {
+      type: "questions",
+      timestamp: new Date().toISOString(),
+      data: {
+        role: "assistant",
+        content: {
+          questions
+        },
+      }
+    }
+    chatDB.saveMessage({
+      projectId,
+      content: payload.data.content,
+      role: payload.data.role as any,
+      screen: 1,
+      timestamp: payload.timestamp,
+      type: payload.type
+    })
+    if (!projectConns) return console.log('no clients for ', projectId);
+    for (const ws of projectConns) {
+      if (ws.readyState === 1) {
+        // console.log(payload);
+        ws.send(JSON.stringify(payload));
+      }
+    }
+
+    return { sendAmount: projectConns }
+
+  }
+
+
+  public sendFiller(projectId: string, filler: string) {
+    const projectConns = this.connections.get(projectId);
+    if (!projectConns) return console.log('no clients for ', projectId);
+    const payload = {
+      type: "typing",
+      timestamp: new Date().toISOString(),
+      data: {
+        role: "assistant",
+        content: {
+          filler
+        },
+      }
+    }
+    for (const ws of projectConns) {
+      if (ws.readyState === 1) {
+        // console.log(payload);
+        ws.send(JSON.stringify(payload));
+      }
+    }
+
+    return { sendAmount: projectConns }
+
+  }
+
 
   /**
    * Shuts down the WebSocketManager and clears the heartbeat interval.

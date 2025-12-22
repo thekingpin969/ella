@@ -50,6 +50,14 @@ createProject.post("/", zValidator("json", createProjectSchema), async (c) => {
       },
     });
 
+    stageEngine.emitEvent({
+      name: "start_initial_analysis",
+      projectId: projectId,
+      payload: {
+        description: body.description,
+      }
+    });
+
     return c.json(
       {
         projectId,

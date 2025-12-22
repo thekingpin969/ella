@@ -7,6 +7,10 @@ import { cors } from "hono/cors";
 import { initMongoDB } from "./src/db/schema";
 import projectRoutes from "./src/routes/projects";
 import { wsManager } from "./src/websocket/manager";
+import { log } from 'console';
+import { chatDB } from './src/db/chatStorage';
+import { stageEngine } from './src/engin';
+
 
 const app = new Hono();
 const { upgradeWebSocket, websocket } = createBunWebSocket<any>();
@@ -30,7 +34,33 @@ app.get(
       data: { projectId },
       onOpen(_event, ws: any) {
         wsManager.addConnection(projectId, ws);
+        const prevMsg: any = chatDB.loadMessages(projectId, 1)
+        // log(prevMsg)
+        for (const msg of prevMsg) {
+          wsManager.broadcast(projectId, {
+            type: 'message', data: {
+              role: msg.role,
+              content: msg.content,
+              confidence: 0
+            }, timestamp: msg.timestamp
+          })
+        }
       },
+      onMessage(event: any, ws: any) {
+        const message = JSON.parse(event.data);
+        console.log("Received message:", message);
+
+        stageEngine.emitEvent({
+          name: 'user_response',
+          payload: {
+            message
+          },
+          projectId,
+        })
+
+        // TODO: Send to Stage Engine
+      },
+
       onClose(_event, ws: any) {
         wsManager.removeConnection(projectId, ws);
       },

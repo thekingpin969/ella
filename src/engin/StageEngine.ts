@@ -24,15 +24,7 @@ export class StageEngine {
         console.log("[StageEngine] Initialized with handlers:", Array.from(this.handlers.keys()));
     }
 
-    /**
-     * Create context for a new project
-     */
-    createContext(
-        projectId: string,
-        projectName: string,
-        driveFolderId: string,
-        initialDescription?: string
-    ): Context {
+    createContext(projectId: string, projectName: string, driveFolderId: string, initialDescription?: string): Context {
         const context: Context = {
             projectId,
             projectName,
@@ -46,11 +38,8 @@ export class StageEngine {
             },
             artifacts: []
         };
-
         this.contexts.set(projectId, context);
-
         console.log(`[StageEngine] Context created for ${projectId}`);
-
         return context;
     }
 

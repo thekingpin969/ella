@@ -11,6 +11,7 @@ export interface PlanningData {
     messages: Message[];
     confidence: number;
     initialDescription?: string;
+    initialAnalysis?: any;
 }
 
 export interface Context {
