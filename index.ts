@@ -4,12 +4,11 @@ import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
-import { initMongoDB } from "./src/db/mongodb/schema";
 import projectRoutes from "./src/routes/projects";
 import { wsManager } from "./src/websocket/manager";
-import { log } from 'console';
 import { chatDB } from './src/db/chatStorage';
 import { stageEngine } from './src/engin';
+import { initializeInfrastructure } from './src/infrastructure';
 
 
 const app = new Hono();
@@ -85,7 +84,7 @@ app.onError((err, c) => {
 
 const port = process.env.PORT || 3000;
 
-initMongoDB().then(() => {
+initializeInfrastructure().then(() => {
   console.log(`[Server] E.L.L.A API running on port ${port}`);
 });
 
