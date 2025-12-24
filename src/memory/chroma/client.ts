@@ -7,6 +7,9 @@ class ChromaDBManager {
     private initialized: boolean = false;
 
     constructor() {
+        // this.client = new ChromaClient({
+        //     path: process.env.CHROMA_URL || "http://localhost:8000"
+        // });
         this.client = new CloudClient({
             apiKey: process.env.CHROMA_API_KEY,
             tenant: process.env.CHROMA_TENANT,
