@@ -9,6 +9,7 @@ import { wsManager } from "./src/websocket/manager";
 import { chatDB } from './src/db/chatStorage';
 import { stageEngine } from './src/engin';
 import { initializeInfrastructure } from './src/infrastructure';
+import { RegisterTools } from './src/tools';
 
 
 const app = new Hono();
@@ -84,9 +85,9 @@ app.onError((err, c) => {
 
 const port = process.env.PORT || 3000;
 
-initializeInfrastructure().then(() => {
-  console.log(`[Server] E.L.L.A API running on port ${port}`);
-});
+await initializeInfrastructure()
+RegisterTools()
+console.log(`[Server] E.L.L.A API running on port ${port}`);
 
 export default {
   port,
