@@ -1,6 +1,8 @@
 // src/llm/LLMService.ts
 import { LLMProvider as ILLMProvider, LLMRequest, LLMResponse, Message } from "./types";
 import { GeminiProvider } from "./providers/gemini";
+import { OpenRouterProvider } from "./providers/openrouter";
+import { CloudflareProvider } from "./providers/cloudflare";
 
 export class LLMService {
     private provider: ILLMProvider;
@@ -15,8 +17,15 @@ export class LLMService {
             case "gemini":
                 this.provider = new GeminiProvider();
                 break;
+            case "openrouter":
+                this.provider = new OpenRouterProvider();
+                break;
+            case "cloudflare":
+                this.provider = new CloudflareProvider();
+                break;
             // TODO: Add DeepSeek, Qwen, MiniMax
             default:
+                this.provider = new OpenRouterProvider();
                 throw new Error(`Unknown LLM provider: ${providerName}`);
         }
 

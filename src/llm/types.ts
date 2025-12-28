@@ -1,6 +1,6 @@
 // src/llm/types.ts
 
-export type LLMProviders = "gemini" | "deepseek" | "qwen" | "minimax";
+export type LLMProviders = "gemini" | "openrouter" | "deepseek" | "qwen" | "minimax";
 
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
