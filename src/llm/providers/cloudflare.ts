@@ -1,16 +1,5 @@
-// src/llm/providers/cloudflare.ts
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 
-/**
- * Cloudflare Workers AI Provider for E.L.L.A
- * Uses OpenAI-compatible endpoints
- * 
- * Recommended models for E.L.L.A:
- * - @cf/deepseek-ai/deepseek-r1-distill-qwen-32b (Planning/Reasoning)
- * - @cf/qwen/qwen2.5-coder-32b-instruct (Coding)
- * - @cf/meta/llama-3.3-70b-instruct-fp8-fast (Review/General)
- * - @cf/google/gemma-3-12b-it (Fast/Efficient)
- */
 export class CloudflareProvider implements LLMProvider {
     name = "cloudflare";
     private apiKey: string;
@@ -186,10 +175,10 @@ export class CloudflareProvider implements LLMProvider {
     async generateEmbeddings(texts: string[]): Promise<number[][]> {
         try {
             const embeddings: number[][] = [];
-
+            const model = '@cf/qwen/qwen3-embedding-0.6b'
             for (const text of texts) {
                 const response = await fetch(
-                    `${this.baseUrl}/embeddings`,
+                    `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/${model}`,
                     {
                         method: "POST",
                         headers: {
@@ -197,8 +186,7 @@ export class CloudflareProvider implements LLMProvider {
                             "Authorization": `Bearer ${this.apiKey}`
                         },
                         body: JSON.stringify({
-                            model: "@cf/baai/bge-large-en-v1.5", // Default embedding model
-                            input: text
+                            text
                         })
                     }
                 );
@@ -208,8 +196,8 @@ export class CloudflareProvider implements LLMProvider {
                 }
 
                 const data = await response.json();
-                if (data.data?.[0]?.embedding) {
-                    embeddings.push(data.data[0].embedding);
+                if (data.result) {
+                    embeddings.push(data.result);
                 }
             }
 
@@ -230,32 +218,3 @@ export class CloudflareProvider implements LLMProvider {
         };
     }
 }
-
-/**
- * Cloudflare-specific model recommendations for E.L.L.A agents
- */
-export const CloudflareModels = {
-    // Planning & Architecture
-    PLANNER: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
-    PLANNER_ALT: "@cf/qwen/qwq-32b",
-
-    // Code Generation
-    CODER: "@cf/qwen/qwen2.5-coder-32b-instruct",
-    CODER_ALT: "@cf/meta/llama-3.1-8b-instruct",
-
-    // Code Review
-    REVIEWER: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    REVIEWER_ALT: "@cf/meta/llama-3.1-70b-instruct",
-
-    // Execution & Testing
-    EXECUTOR: "@cf/google/gemma-3-12b-it",
-    EXECUTOR_ALT: "@cf/meta/llama-3.1-8b-instruct",
-
-    // General Purpose
-    GENERAL: "@cf/openai/gpt-oss-120b",
-    GENERAL_FAST: "@cf/google/gemma-3-12b-it",
-
-    // Embeddings
-    EMBEDDING: "@cf/baai/bge-large-en-v1.5",
-    EMBEDDING_MULTILINGUAL: "@cf/baai/bge-m3"
-};
