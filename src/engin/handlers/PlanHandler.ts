@@ -3,6 +3,9 @@ import { Context } from "../types/context";
 import { Event } from "../types/events";
 import { wsManager } from "../../websocket/manager";
 import { sleep } from "bun";
+import { llmService } from "../../llm";
+import { memoryService } from "../../memory";
+import { PROMPTS } from "../prompts/prompts";
 
 export class PlanHandler extends BaseHandler {
 
@@ -25,22 +28,22 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-    private async performInitialAnalysis(context: Context, event: Event): Promise<void> {
-        this.log(`Starting initial analysis for ${context.projectId}`);
+    // private async performInitialAnalysis(context: Context, event: Event): Promise<void> {
+    //     this.log(`Starting initial analysis for ${context.projectId}`);
 
-        const description = event.payload.description;
-        wsManager.sendFiller(context.projectId, 'analysing project...')
-        const analysis = await this.createInitialContext(description);
-        context.planningData!.confidence = analysis.confidence;
-        wsManager.sendMessage(context.projectId, { message: analysis.message })
-        this.log(`Initial analysis complete: ${analysis.confidence}% confidence`);
-        if (analysis.confidence < 95) {
-            this.log('confidence is low, trying to increase confidence')
-            this.increaceConfidence(context, event)
-        } else {
-            this.log('have enough confidence to move to the next step')
-        }
-    }
+    //     const description = event.payload.description;
+    //     wsManager.sendFiller(context.projectId, 'analysing project...')
+    //     const analysis = await this.createInitialContext(description);
+    //     context.planningData!.confidence = analysis.confidence;
+    //     wsManager.sendMessage(context.projectId, { message: analysis.message })
+    //     this.log(`Initial analysis complete: ${analysis.confidence}% confidence`);
+    //     if (analysis.confidence < 95) {
+    //         this.log('confidence is low, trying to increase confidence')
+    //         this.increaceConfidence(context, event)
+    //     } else {
+    //         this.log('have enough confidence to move to the next step')
+    //     }
+    // }
 
     private onUserResponse(context: Context, event: Event): void {
         switch (event.name!) {
@@ -98,14 +101,6 @@ export class PlanHandler extends BaseHandler {
         this.log('genarating questions...')
     }
 
-    private async createInitialContext(description: string): Promise<{ message: string; confidence: number; }> {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return {
-            message: `Hi! I've analyzed your idea. A we app for "${description}" thats an excelent saas idea!, but the information you gave to my was insuffitiant, it may force me to guess, to avoid that please gave me more information through the clarifiying quetions i ask, here are they`,
-            confidence: 20,
-        };
-    }
-
     private onContextCreated(context: Context, event: Event): void {
         this.log(`Planning session started for ${context.projectId}`);
 
@@ -141,6 +136,178 @@ export class PlanHandler extends BaseHandler {
 
     }
 
+    private async performInitialAnalysis(context: Context, event: Event): Promise<void> {
+        this.log(`Starting initial analysis for ${context.projectId}`);
+
+        const description = event.payload.description;
+        // this.log(description)
+        wsManager.sendFiller(context.projectId, 'analyzing project...');
+
+        try {
+            // Step 1: Get analysis and gaps
+            const analysis = await this.createInitialContext(description);
+            this.log(analysis)
+            // Step 2: Calculate confidence
+            const { confidence, reasoning } = await this.calculateConfidence(
+                description,
+                analysis.gaps
+            );
+            this.log(confidence, reasoning)
+            // Step 3: Store in context
+            context.planningData!.confidence = confidence;
+
+            // Step 4: Store in session memory
+            memoryService.setSession(context.projectId, 'initial_analysis', JSON.stringify({
+                description,
+                gaps: analysis.gaps,
+                confidence,
+                reasoning,
+                timestamp: new Date().toISOString()
+            }));
+
+            // Step 5: Send message to user
+            wsManager.sendMessage(context.projectId, { message: analysis.message });
+
+            this.log(`Initial analysis complete: ${confidence}% confidence`);
+
+            // Step 6: Check if we need to increase confidence
+            if (confidence < 90) {
+                this.log('Confidence is low, trying to increase confidence');
+                await this.increaceConfidence(context, event);
+            } else {
+                this.log('Have enough confidence to move to the next step');
+                // TODO: Move to next phase
+            }
+
+        } catch (error: any) {
+            this.log(`Error in initial analysis: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: "I encountered an issue analyzing your project. Could you provide more details?"
+            });
+        }
+    }
+
+
+    private async createInitialContext(description: string): Promise<{
+        gaps: string[];
+        message: string;
+    }> {
+        try {
+            const response = await llmService.chat({
+                messages: [
+                    {
+                        role: "system",
+                        content: PROMPTS.ANALYSIS_SYSTEM_PROMPT
+                    },
+                    {
+                        role: "user",
+                        content: description
+                    }
+                ],
+                temperature: 0.7,
+                max_tokens: 10000
+            });
+
+            // if (!response) {
+            if (!response.content) {
+                throw new Error("Empty response from LLM");
+            }
+
+            // const parsed = this.parseJSONResponse(response);
+            const parsed = this.parseJSONResponse(response.content);
+
+            // Validate response structure
+            if (!parsed.gaps || !Array.isArray(parsed.gaps)) {
+                throw new Error("Invalid response format: missing gaps array");
+            }
+            if (!parsed.message || typeof parsed.message !== 'string') {
+                throw new Error("Invalid response format: missing message");
+            }
+
+            return {
+                gaps: parsed.gaps,
+                message: parsed.message
+            };
+
+        } catch (error: any) {
+            this.log(`Error in createInitialContext: ${error.message}`);
+            // Fallback response
+            return {
+                gaps: ["Unable to analyze - please provide more details"],
+                message: "I encountered an issue analyzing your description. Could you provide more details about your project?"
+            };
+        }
+    }
+
+    private async calculateConfidence(
+        description: string,
+        gaps: string[]
+    ): Promise<{ confidence: number; reasoning: string }> {
+        try {
+            const response = await llmService.chat({
+                messages: [
+                    {
+                        role: "system",
+                        content: PROMPTS.CONFIDENCE_SYSTEM_PROMPT
+                    },
+                    {
+                        role: "user",
+                        content: JSON.stringify({
+                            description,
+                            identified_gaps: gaps
+                        })
+                    }
+                ],
+                temperature: 0.3, // Lower for consistency
+                max_tokens: 10000
+            });
+
+            // if (!response) {
+            if (!response.content) {
+                throw new Error("Empty response from LLM");
+            }
+
+            // const parsed = this.parseJSONResponse(response);
+            const parsed = this.parseJSONResponse(response.content);
+
+            // Validate response
+            if (typeof parsed.confidence !== 'number') {
+                throw new Error("Invalid response: confidence must be a number");
+            }
+            if (parsed.confidence < 0 || parsed.confidence > 100) {
+                throw new Error("Invalid response: confidence must be between 0-100");
+            }
+
+            return {
+                confidence: parsed.confidence,
+                reasoning: parsed.reasoning || "No reasoning provided"
+            };
+
+        } catch (error: any) {
+            this.log(`Error in calculateConfidence: ${error.message}`);
+            // Fallback to conservative confidence
+            return {
+                confidence: 30,
+                reasoning: "Unable to calculate confidence accurately"
+            };
+        }
+    }
+
+
+    private parseJSONResponse(content: string): any {
+        try {
+            // Remove markdown code fences if present
+            const cleaned = content
+                .replace(/```json\n?/g, '')
+                .replace(/```\n?/g, '')
+                .trim();
+
+            return JSON.parse(cleaned);
+        } catch (error) {
+            this.log(`Failed to parse JSON: ${content}`);
+            throw new Error('Invalid JSON response from LLM');
+        }
+    }
 
 
     private completeScreen(context: Context, screenNumber: number): void {

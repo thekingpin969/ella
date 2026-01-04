@@ -3,6 +3,7 @@ import { LLMProvider as ILLMProvider, LLMRequest, LLMResponse, Message } from ".
 import { GeminiProvider } from "./providers/gemini";
 import { OpenRouterProvider } from "./providers/openrouter";
 import { CloudflareProvider } from "./providers/cloudflare";
+import { ClaudeProvider } from "./providers/claude";
 
 export class LLMService {
     private provider: ILLMProvider;
@@ -22,6 +23,9 @@ export class LLMService {
                 break;
             case "cloudflare":
                 this.provider = new CloudflareProvider();
+                break;
+            case "claude":
+                this.provider = new ClaudeProvider();
                 break;
             // TODO: Add DeepSeek, Qwen, MiniMax
             default:

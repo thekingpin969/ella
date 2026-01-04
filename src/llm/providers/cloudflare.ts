@@ -1,3 +1,4 @@
+import { log } from "console";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 
 export class CloudflareProvider implements LLMProvider {
@@ -10,7 +11,8 @@ export class CloudflareProvider implements LLMProvider {
     constructor() {
         this.apiKey = process.env.CLOUDFLARE_API_KEY || "";
         this.accountId = process.env.CLOUDFLARE_ACCOUNT_ID || "";
-        this.model = process.env.CLOUDFLARE_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8";
+        // this.model = process.env.CLOUDFLARE_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8";
+        this.model = "@cf/mistralai/mistral-small-3.1-24b-instruct";
 
         if (!this.apiKey) {
             throw new Error("CLOUDFLARE_API_KEY not found in environment");
@@ -38,7 +40,7 @@ export class CloudflareProvider implements LLMProvider {
                 body.temperature = request.temperature;
             }
             if (request.max_tokens !== undefined) {
-                body.max_tokens = request.max_tokens;
+                body.max_tokens = 32000;
             }
 
             // Add tools if provided
@@ -47,6 +49,7 @@ export class CloudflareProvider implements LLMProvider {
                 body.tool_choice = request.tool_choice || "auto";
             }
 
+            log(body)
             // Native Cloudflare endpoint: /ai/run/{model}
             const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/${this.model}`;
 
@@ -65,7 +68,7 @@ export class CloudflareProvider implements LLMProvider {
             }
 
             const data = await response.json();
-            console.log(data.result, data.result.choices?.[0])
+            console.log(data.result)
             return this.parseResponse(data.result);
 
         } catch (error: any) {
@@ -114,26 +117,36 @@ export class CloudflareProvider implements LLMProvider {
     }
 
     private parseResponse(data: any): LLMResponse {
-        const choice = data.choices?.[0];
-        if (!choice) {
+        // Handle Cloudflare's native response format
+        // Response can have: response (string), usage (object), tool_calls (array)
+        if (data.response === undefined && !data.tool_calls) {
             throw new Error("No response from Cloudflare Workers AI");
         }
 
-        const message = choice.message;
+        // Determine finish reason based on presence of tool_calls
         let finishReason: LLMResponse["finish_reason"] = "stop";
-
-        // Map finish_reason (OpenAI-compatible)
-        if (choice.finish_reason === "tool_calls") {
+        if (data.tool_calls && data.tool_calls.length > 0) {
             finishReason = "tool_calls";
-        } else if (choice.finish_reason === "length") {
-            finishReason = "length";
-        } else if (choice.finish_reason === "content_filter") {
-            finishReason = "content_filter";
+        }
+
+        // Convert tool_calls to the expected format if present
+        let toolCalls: ToolCall[] | undefined;
+        if (data.tool_calls && data.tool_calls.length > 0) {
+            toolCalls = data.tool_calls.map((tc: any, index: number) => ({
+                id: `call_${index}`,
+                type: "function" as const,
+                function: {
+                    name: tc.name,
+                    arguments: typeof tc.arguments === "string"
+                        ? tc.arguments
+                        : JSON.stringify(tc.arguments)
+                }
+            }));
         }
 
         return {
-            content: message.content || null,
-            tool_calls: message.tool_calls || undefined,
+            content: data.response || null,
+            tool_calls: toolCalls,
             finish_reason: finishReason,
             usage: data.usage ? {
                 prompt_tokens: data.usage.prompt_tokens || 0,
