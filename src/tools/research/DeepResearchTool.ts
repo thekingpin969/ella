@@ -92,9 +92,6 @@ export class DeepResearchTool {
         }
     }
 
-    /**
-     * Build comprehensive research prompt
-     */
     private buildResearchPrompt(
         topic: string,
         focusAreas: string[],
@@ -255,12 +252,10 @@ export class DeepResearchTool {
             }
         });
 
-        return risks.slice(0, 5); // Limit to top 5
+        return risks.slice(0, 5);
     }
 
-    /**
-     * Generate research artifacts
-     */
+
     private generateArtifacts(report: ResearchReport): ArtifactInfo[] {
         const artifacts: ArtifactInfo[] = [];
 
@@ -271,7 +266,6 @@ export class DeepResearchTool {
             content: this.generateCapabilityMatrix(report)
         });
 
-        // 2. Risk Assessment
         artifacts.push({
             name: "integration-risks.json",
             type: "risk-assessment",
@@ -282,7 +276,6 @@ export class DeepResearchTool {
             }
         });
 
-        // 3. Implementation Guide
         artifacts.push({
             name: "recommended-approach.md",
             type: "implementation-guide",
@@ -309,9 +302,6 @@ export class DeepResearchTool {
         };
     }
 
-    /**
-     * Generate implementation guide
-     */
     private generateImplementationGuide(report: ResearchReport): string {
         let guide = `# Implementation Guide: ${report.topic}\n\n`;
         guide += `Generated: ${new Date().toISOString()}\n\n`;

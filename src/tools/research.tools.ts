@@ -1,5 +1,6 @@
 import { ToolDefinition } from "./types";
 import { ResearchOrchestrator } from "./research/ResearchOrchestrator";
+import { log } from "console";
 
 // Create singleton instance
 const researchOrchestrator = new ResearchOrchestrator();
@@ -44,6 +45,7 @@ export const researchTools: ToolDefinition[] = [
                     error: result.error
                 };
             } catch (error: any) {
+                log(error)
                 return {
                     success: false,
                     error: error.message
@@ -111,6 +113,7 @@ export const researchTools: ToolDefinition[] = [
                     error: result.error
                 };
             } catch (error: any) {
+                log(error)
                 return {
                     success: false,
                     error: error.message
@@ -163,6 +166,7 @@ export const researchTools: ToolDefinition[] = [
                     error: result.error
                 };
             } catch (error: any) {
+                log(error)
                 return {
                     success: false,
                     error: error.message
@@ -205,6 +209,7 @@ export const researchTools: ToolDefinition[] = [
                     }
                 };
             } catch (error: any) {
+                log(error)
                 return {
                     success: false,
                     error: error.message

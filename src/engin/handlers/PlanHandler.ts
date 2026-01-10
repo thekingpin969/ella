@@ -1,11 +1,12 @@
+// src/engin/handlers/PlanHandler.ts (ENHANCED)
 import { BaseHandler } from "./BaseHandler";
 import { Context } from "../types/context";
 import { Event } from "../types/events";
 import { wsManager } from "../../websocket/manager";
-import { sleep } from "bun";
 import { llmService } from "../../llm";
 import { memoryService } from "../../memory";
 import { PROMPTS } from "../prompts/prompts";
+import { toolExecutor } from "../../tools";
 
 export class PlanHandler extends BaseHandler {
 
@@ -27,23 +28,6 @@ export class PlanHandler extends BaseHandler {
                 break;
         }
     }
-
-    // private async performInitialAnalysis(context: Context, event: Event): Promise<void> {
-    //     this.log(`Starting initial analysis for ${context.projectId}`);
-
-    //     const description = event.payload.description;
-    //     wsManager.sendFiller(context.projectId, 'analysing project...')
-    //     const analysis = await this.createInitialContext(description);
-    //     context.planningData!.confidence = analysis.confidence;
-    //     wsManager.sendMessage(context.projectId, { message: analysis.message })
-    //     this.log(`Initial analysis complete: ${analysis.confidence}% confidence`);
-    //     if (analysis.confidence < 95) {
-    //         this.log('confidence is low, trying to increase confidence')
-    //         this.increaceConfidence(context, event)
-    //     } else {
-    //         this.log('have enough confidence to move to the next step')
-    //     }
-    // }
 
     private onUserResponse(context: Context, event: Event): void {
         switch (event.name!) {
@@ -67,7 +51,7 @@ export class PlanHandler extends BaseHandler {
         this.log(`Updated context: ${confidence}`);
         if (confidence < 95) {
             this.log('confidence is low, trying to increase confidence')
-            this.increaceConfidence(context, event)
+            await this.increaceConfidence(context, event)
         } else {
             this.log('have enough confidence to move to the next step')
         }
@@ -78,28 +62,307 @@ export class PlanHandler extends BaseHandler {
         return {
             confidence: 40
         }
-
     }
 
+    /**
+     * ENHANCED: Increase confidence through autonomous research and clarification
+     */
     private async increaceConfidence(context: Context, event: Event): Promise<void> {
-        this.log('analysing context to increase confidence...')
-        wsManager.sendFiller(context.projectId, 'finding gaps...')
-        await sleep(1000 * 10)
-        wsManager.sendFiller(context.projectId, 'trying to fill gaps...')
-        await sleep(1000 * 10)
-        wsManager.sendFiller(context.projectId, 'reserching on topics to fill gaps...')
-        await sleep(1000 * 10)
-        wsManager.sendFiller(context.projectId, 'finalysing reserch...')
-        await sleep(1000 * 10)
-        wsManager.sendFiller(context.projectId, 'need more clarity, preparing questions...')
-        await sleep(1000 * 10)
-        wsManager.sendMessage(context.projectId, { message: 'i have done my own research and still i need clarification from your side to fill out the gaps' })
-        wsManager.sendFiller(context.projectId, 'need more clarity, preparing questions...')
-        await sleep(1000 * 10)
+        this.log('Starting autonomous gap-filling process...')
 
-        this.log('increasing confidence through clarifying questions...')
-        this.log('genarating questions...')
+        // Step 1: Load current state from session memory
+        const initialAnalysisStr = memoryService.getSession(context.projectId, 'initial_analysis')
+        if (!initialAnalysisStr) {
+            this.log('No initial analysis found')
+            return
+        }
+
+        const initialAnalysis = JSON.parse(initialAnalysisStr.content)
+        const { description, gaps, confidence: currentConfidence } = initialAnalysis
+
+        // Step 2: Ask E.L.L.A to research and fill gaps autonomously
+        wsManager.sendFiller(context.projectId, 'analyzing gaps and conducting research...')
+
+        const gapFillingResult = await this.conductGapFillingResearch(
+            context,
+            description,
+            gaps
+        )
+
+        // Step 3: Recalculate confidence with filled gaps
+        wsManager.sendFiller(context.projectId, 'updating confidence with research findings...')
+
+        const updatedConfidence = await this.recalculateConfidence(
+            context,
+            description,
+            gaps,
+            gapFillingResult
+        )
+
+        this.log(`Confidence updated: ${currentConfidence}% → ${updatedConfidence.confidence}%`)
+
+        // Update session memory
+        memoryService.setSession(context.projectId, 'initial_analysis', JSON.stringify({
+            description,
+            gaps: updatedConfidence.remainingGaps,
+            filledGaps: gapFillingResult.filledGaps,
+            confidence: updatedConfidence.confidence,
+            reasoning: updatedConfidence.reasoning,
+            timestamp: new Date().toISOString()
+        }))
+
+        // Step 4: Check if we still need user input
+        if (updatedConfidence.confidence >= 90) {
+            wsManager.sendMessage(context.projectId, {
+                message: `✅ Research complete! Confidence now at ${updatedConfidence.confidence}%. Ready to proceed.`
+            })
+
+            // Show what was researched
+            if (gapFillingResult.filledGaps.length > 0) {
+                const summary = this.summarizeResearch(gapFillingResult.filledGaps)
+                wsManager.sendMessage(context.projectId, { message: summary })
+            }
+        } else {
+            // Still need user input for business decisions
+            wsManager.sendMessage(context.projectId, {
+                message: `I've researched technical details (confidence: ${updatedConfidence.confidence}%), but I need your input on some business decisions.`
+            })
+
+            await this.askClarifyingQuestions(context, updatedConfidence.remainingGaps)
+        }
     }
+
+    /**
+     * NEW: Let E.L.L.A autonomously research gaps using available tools
+     */
+    private async conductGapFillingResearch(
+        context: Context,
+        description: string,
+        gaps: string[]
+    ): Promise<{
+        filledGaps: Array<{ gap: string, resolution: string, source: string }>,
+        unfillableGaps: string[]
+    }> {
+        try {
+            const response = await llmService.chat({
+                messages: [
+                    {
+                        role: "system",
+                        content: PROMPTS.GAP_FILLING_PROMPT
+                    },
+                    {
+                        role: "user",
+                        content: JSON.stringify({
+                            description,
+                            gaps,
+                        })
+                    }
+                ],
+                tools: toolExecutor.getToolDefinitions(),
+                tool_choice: "auto",
+                temperature: 0.4,
+                max_tokens: 16000
+            })
+
+            // Handle tool calls if E.L.L.A decided to research
+            if (response.tool_calls && response.tool_calls.length > 0) {
+                this.log(`E.L.L.A is using ${response.tool_calls.length} tools to research gaps`)
+                this.log(`Tool calls: ${JSON.stringify(response.tool_calls)}`)
+                // Execute tools
+                const toolCalls = toolExecutor.parseToolCalls(response)
+                const toolResults = await toolExecutor.executeTools(toolCalls, context)
+
+                this.log(toolCalls, `Tool results: ${JSON.stringify(toolResults)}`)
+
+                // Get final response with research results
+                const toolMessages = toolExecutor.formatToolResponses(toolResults)
+
+                const finalResponse = await llmService.chat({
+                    messages: [
+                        {
+                            role: "system",
+                            content: PROMPTS.GAP_FILLING_PROMPT
+                        },
+                        {
+                            role: "user",
+                            content: JSON.stringify({ description, gaps })
+                        },
+                        {
+                            role: "assistant",
+                            content: response.content || "",
+                            tool_calls: response.tool_calls
+                        },
+                        ...toolMessages.map(tm => ({
+                            role: "tool" as const,
+                            content: tm.content,
+                            tool_call_id: tm.tool_call_id,
+                            name: tm.name
+                        }))
+                    ],
+                    tools: toolExecutor.getToolDefinitions(),
+                    tool_choice: "auto",
+                    temperature: 0.4,
+                    max_tokens: 16000
+                })
+                this.log(finalResponse, [
+                    {
+                        role: "system",
+                        content: PROMPTS.GAP_FILLING_PROMPT
+                    },
+                    {
+                        role: "user",
+                        content: JSON.stringify({ description, gaps })
+                    },
+                    {
+                        role: "assistant",
+                        content: response.content || "",
+                        tool_calls: response.tool_calls
+                    },
+                    ...toolMessages.map(tm => ({
+                        role: "tool" as const,
+                        content: tm.content,
+                        tool_call_id: tm.tool_call_id,
+                        name: tm.name
+                    }))
+                ])
+                return this.parseGapFillingResult(finalResponse.content || "")
+            }
+
+            // No tools used - parse direct response
+            return this.parseGapFillingResult(response.content || "")
+
+        } catch (error: any) {
+            this.log(`Error in gap filling research: ${error.message}`)
+            return {
+                filledGaps: [],
+                unfillableGaps: gaps
+            }
+        }
+    }
+    /**
+     * NEW: Parse gap filling result from LLM response
+     */
+    private parseGapFillingResult(content: string): {
+        filledGaps: Array<{ gap: string, resolution: string, source: string }>,
+        unfillableGaps: string[]
+    } {
+        try {
+            const cleaned = content
+                .replace(/```json\n?/g, '')
+                .replace(/```\n?/g, '')
+                .trim()
+
+            const parsed = JSON.parse(cleaned)
+
+            return {
+                filledGaps: parsed.filledGaps || [],
+                unfillableGaps: parsed.unfillableGaps || []
+            }
+        } catch (error) {
+            this.log('Failed to parse gap filling result, returning empty', error)
+            return {
+                filledGaps: [],
+                unfillableGaps: []
+            }
+        }
+    }
+
+    /**
+     * NEW: Recalculate confidence with filled gaps
+     */
+    private async recalculateConfidence(
+        context: Context,
+        description: string,
+        originalGaps: string[],
+        gapFillingResult: any
+    ): Promise<{
+        confidence: number,
+        reasoning: string,
+        remainingGaps: string[]
+    }> {
+        try {
+            const response = await llmService.chat({
+                messages: [
+                    {
+                        role: "system",
+                        content: PROMPTS.CONFIDENCE_SYSTEM_PROMPT
+                    },
+                    {
+                        role: "user",
+                        content: JSON.stringify({
+                            description,
+                            original_gaps: originalGaps,
+                            filled_gaps: gapFillingResult.filledGaps,
+                            remaining_gaps: gapFillingResult.unfillableGaps
+                        })
+                    }
+                ],
+                temperature: 0.3,
+                max_tokens: 10000
+            })
+
+            const parsed = this.parseJSONResponse(response.content || "{}")
+
+            return {
+                confidence: parsed.confidence || 50,
+                reasoning: parsed.reasoning || "Confidence updated with research",
+                remainingGaps: gapFillingResult.unfillableGaps
+            }
+
+        } catch (error: any) {
+            this.log(`Error recalculating confidence: ${error.message}`)
+            return {
+                confidence: 50,
+                reasoning: "Error during confidence calculation",
+                remainingGaps: gapFillingResult.unfillableGaps
+            }
+        }
+    }
+
+    /**
+     * NEW: Ask clarifying questions for unfillable gaps
+     */
+    private async askClarifyingQuestions(
+        context: Context,
+        unfillableGaps: string[]
+    ): Promise<void> {
+        if (unfillableGaps.length === 0) return
+
+        // Generate questions from gaps
+        const questions = unfillableGaps.map((gap, index) => ({
+            id: `gap_${index}`,
+            text: this.gapToQuestion(gap),
+            type: "text" as const
+        }))
+
+        wsManager.askQuestion(context.projectId, { questions })
+    }
+
+    /**
+     * Helper: Convert gap to question
+     */
+    private gapToQuestion(gap: string): string {
+        // Simple conversion - can be enhanced
+        return gap.replace(/unclear|not specified|undefined|missing/gi, '')
+            .trim() + '?'
+    }
+
+    /**
+     * Helper: Summarize research findings
+     */
+    private summarizeResearch(filledGaps: Array<{ gap: string, resolution: string }>): string {
+        if (filledGaps.length === 0) return ""
+
+        let summary = "📊 Research Findings:\n\n"
+        filledGaps.forEach((filled, index) => {
+            summary += `${index + 1}. ${filled.gap}\n`
+            summary += `   ✓ ${filled.resolution}\n\n`
+        })
+
+        return summary
+    }
+
+    // ... rest of existing methods (onContextCreated, performInitialAnalysis, etc.)
 
     private onContextCreated(context: Context, event: Event): void {
         this.log(`Planning session started for ${context.projectId}`);
@@ -114,9 +377,6 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-    /**
-     * User sent a message via WebSocket
-     */
     private onWebSocketMessage(context: Context, event: Event): void {
         const { message } = event.payload;
         this.log(event)
@@ -125,34 +385,29 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-    /**
-     * Handle user message in chat
-     */
     private async handleUserMessage(context: Context, userMessage: string): Promise<void> {
         this.log('message recived..., handling it')
         wsManager.sendMessage(context.projectId, { message: 'ok i will wait...' })
-
-
-
     }
 
     private async performInitialAnalysis(context: Context, event: Event): Promise<void> {
         this.log(`Starting initial analysis for ${context.projectId}`);
 
         const description = event.payload.description;
-        // this.log(description)
         wsManager.sendFiller(context.projectId, 'analyzing project...');
 
         try {
             // Step 1: Get analysis and gaps
             const analysis = await this.createInitialContext(description);
             this.log(analysis)
+
             // Step 2: Calculate confidence
             const { confidence, reasoning } = await this.calculateConfidence(
                 description,
                 analysis.gaps
             );
             this.log(confidence, reasoning)
+
             // Step 3: Store in context
             context.planningData!.confidence = confidence;
 
@@ -187,7 +442,6 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-
     private async createInitialContext(description: string): Promise<{
         gaps: string[];
         message: string;
@@ -208,15 +462,12 @@ export class PlanHandler extends BaseHandler {
                 max_tokens: 10000
             });
 
-            // if (!response) {
             if (!response.content) {
                 throw new Error("Empty response from LLM");
             }
 
-            // const parsed = this.parseJSONResponse(response);
             const parsed = this.parseJSONResponse(response.content);
 
-            // Validate response structure
             if (!parsed.gaps || !Array.isArray(parsed.gaps)) {
                 throw new Error("Invalid response format: missing gaps array");
             }
@@ -231,7 +482,6 @@ export class PlanHandler extends BaseHandler {
 
         } catch (error: any) {
             this.log(`Error in createInitialContext: ${error.message}`);
-            // Fallback response
             return {
                 gaps: ["Unable to analyze - please provide more details"],
                 message: "I encountered an issue analyzing your description. Could you provide more details about your project?"
@@ -258,19 +508,16 @@ export class PlanHandler extends BaseHandler {
                         })
                     }
                 ],
-                temperature: 0.3, // Lower for consistency
+                temperature: 0.3,
                 max_tokens: 10000
             });
 
-            // if (!response) {
             if (!response.content) {
                 throw new Error("Empty response from LLM");
             }
 
-            // const parsed = this.parseJSONResponse(response);
             const parsed = this.parseJSONResponse(response.content);
 
-            // Validate response
             if (typeof parsed.confidence !== 'number') {
                 throw new Error("Invalid response: confidence must be a number");
             }
@@ -285,7 +532,6 @@ export class PlanHandler extends BaseHandler {
 
         } catch (error: any) {
             this.log(`Error in calculateConfidence: ${error.message}`);
-            // Fallback to conservative confidence
             return {
                 confidence: 30,
                 reasoning: "Unable to calculate confidence accurately"
@@ -293,10 +539,8 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-
     private parseJSONResponse(content: string): any {
         try {
-            // Remove markdown code fences if present
             const cleaned = content
                 .replace(/```json\n?/g, '')
                 .replace(/```\n?/g, '')
@@ -309,18 +553,13 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-
     private completeScreen(context: Context, screenNumber: number): void {
         this.log(`Screen ${screenNumber} complete for ${context.projectId}`);
 
-        // TODO: Generate artifacts here
-        // For now, just notify
-
         if (screenNumber < 3) {
-            // Move to next screen
             context.planningData!.currentScreen = (screenNumber + 1) as 1 | 2 | 3;
-            context.planningData!.confidence = 0; // Reset for next screen
-            context.planningData!.messages = []; // Clear chat for next screen
+            context.planningData!.confidence = 0;
+            context.planningData!.messages = [];
 
             wsManager.broadcast(context.projectId, {
                 type: "screen_complete",
@@ -334,18 +573,13 @@ export class PlanHandler extends BaseHandler {
                 }
             });
         } else {
-            // All screens complete - planning done!
             this.completePlanning(context);
         }
     }
 
-    /**
-     * All planning screens complete
-     */
     private completePlanning(context: Context): void {
         this.log(`Planning complete for ${context.projectId}`);
 
-        // Notify client
         wsManager.broadcast(context.projectId, {
             type: "planning_complete",
             timestamp: new Date().toISOString(),
@@ -354,14 +588,8 @@ export class PlanHandler extends BaseHandler {
                 artifacts: context.artifacts
             }
         });
-
-        // Transition to implementation stage
-        // This will be handled by StageEngine when it receives planning_complete event
     }
 
-    /**
-     * Screen manually completed by user
-     */
     private onScreenComplete(context: Context, event: Event): void {
         const screenNumber = event.payload.screen;
         this.completeScreen(context, screenNumber);

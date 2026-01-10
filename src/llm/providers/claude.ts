@@ -1,4 +1,5 @@
 // src/llm/providers/claude.ts
+import { log } from "console";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 
 /**
@@ -22,7 +23,7 @@ export class ClaudeProvider implements LLMProvider {
     constructor() {
         this.apiKey = process.env.ANTHROPIC_API_KEY || "";
         // this.model = process.env.CLAUDE_MODEL || "claude-sonnet-4-5";
-        this.model = "claude-sonnet-4-5-thinking";
+        this.model = "gemini-3-pro-high";
 
         if (!this.apiKey) {
             throw new Error("ANTHROPIC_API_KEY not found in environment");
@@ -126,11 +127,15 @@ export class ClaudeProvider implements LLMProvider {
 
     private convertTools(tools: any[]): any[] {
         // Claude uses different tool format
-        return tools.map(tool => ({
-            name: tool.function.name,
-            description: tool.function.description,
-            input_schema: tool.function.parameters
-        }));
+        // console.log(tools)
+        return tools.map(tool => {
+            console.log(tool, 'cc')
+            return {
+                name: tool.function.name,
+                description: tool.function.description,
+                input_schema: tool.function.parameters
+            }
+        });
     }
 
     private convertToolChoice(toolChoice?: "auto" | "required" | "none"): any {
