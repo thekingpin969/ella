@@ -1,5 +1,6 @@
 // src/llm/LLMService.ts
 import { LLMProvider as ILLMProvider, LLMRequest, LLMResponse, Message } from "./types";
+import { logger } from "../utils/logger";
 import { GeminiProvider } from "./providers/gemini";
 import { OpenRouterProvider } from "./providers/openrouter";
 import { CloudflareProvider } from "./providers/cloudflare";
@@ -37,23 +38,23 @@ export class LLMService {
                 throw new Error(`Unknown LLM provider: ${providerName}`);
         }
 
-        console.log(`[LLMService] Using provider: ${this.provider.name}`);
+        logger.info(`[LLMService] Using provider: ${this.provider.name}`);
     }
 
     /**
      * Send chat request
      */
     async chat(request: LLMRequest): Promise<LLMResponse> {
-        console.log(`[LLM] Chat request with ${request.messages.length} messages`);
+        logger.info(`[LLM] Chat request with ${request.messages.length} messages`);
         if (request.tools) {
-            console.log(`[LLM] Tools available: ${request.tools.length}`);
+            logger.debug(`[LLM] Tools available: ${request.tools.length}`);
         }
 
         const response = await this.provider.chat(request);
 
-        console.log(`[LLM] Response: ${response.finish_reason}`);
+        logger.info(`[LLM] Response: ${response.finish_reason}`);
         if (response.usage) {
-            console.log(`[LLM] Tokens: ${response.usage.total_tokens} (${response.usage.prompt_tokens} + ${response.usage.completion_tokens})`);
+            logger.debug(`[LLM] Tokens: ${response.usage.total_tokens} (${response.usage.prompt_tokens} + ${response.usage.completion_tokens})`);
         }
 
         return response;

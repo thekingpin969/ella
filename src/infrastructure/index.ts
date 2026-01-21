@@ -3,51 +3,52 @@ import { memoryService, embeddingService } from "../memory";
 import { fsManager } from "../fs";
 import { chatDB } from "../db/chatStorage";
 import { initMongoDB } from "../db/mongodb/schema";
+import { logger } from "../utils/logger";
 
 /**
  * Initialize all infrastructure components
  */
 export async function initializeInfrastructure(): Promise<void> {
-    console.log("\n🏗️  Initializing E.L.L.A Infrastructure...\n");
+    logger.info("\n🏗️  Initializing E.L.L.A Infrastructure...\n");
 
     try {
         // 1. MongoDB
-        console.log("[1/4] 📊 Connecting to MongoDB...");
+        logger.info("[1/4] 📊 Connecting to MongoDB...");
         await initMongoDB();
-        console.log("✅ MongoDB connected\n");
+        logger.info("✅ MongoDB connected\n");
 
         // 2. ChromaDB & Memory System (with OpenAI embeddings)
-        console.log("[2/4] 🧠 Initializing Memory System (ChromaDB + Embeddings)...");
+        logger.info("[2/4] 🧠 Initializing Memory System (ChromaDB + Embeddings)...");
         await memoryService.initialize();
 
         const memoryHealth = await memoryService.healthCheck();
         if (!memoryHealth) {
-            console.warn("⚠️ Memory system degraded - some features may be limited");
+            logger.warn("⚠️ Memory system degraded - some features may be limited");
         }
 
         // Check embedding provider
         const embeddingHealth = await embeddingService.healthCheck();
-        console.log(`   Embedding Provider: ${embeddingHealth.provider}`);
-        console.log(`   Status: ${embeddingHealth.available ? "✅" : "⚠️"} ${embeddingHealth.details}`);
-        console.log("✅ Memory system ready\n");
+        logger.info(`   Embedding Provider: ${embeddingHealth.provider}`);
+        logger.info(`   Status: ${embeddingHealth.available ? "✅" : "⚠️"} ${embeddingHealth.details}`);
+        logger.info("✅ Memory system ready\n");
 
         // 3. File System Manager
-        console.log("[3/4] 📁 Initializing File System Manager...");
+        logger.info("[3/4] 📁 Initializing File System Manager...");
         const fsStats = await fsManager.getStats();
-        console.log(`✅ Workspace ready (${fsStats.projects} projects)\n`);
+        logger.info(`✅ Workspace ready (${fsStats.projects} projects)\n`);
 
         // 4. Chat Database (SQLite)
-        console.log("[4/4] 💬 Initializing Chat Database...");
+        logger.info("[4/4] 💬 Initializing Chat Database...");
         const chatStats = chatDB.getStats();
-        console.log(`✅ Chat DB ready (${chatStats.totalMessages} messages)\n`);
+        logger.info(`✅ Chat DB ready (${chatStats.totalMessages} messages)\n`);
 
-        console.log("✅ Infrastructure initialized successfully!\n");
+        logger.info("✅ Infrastructure initialized successfully!\n");
 
         // Print summary
         await printInfrastructureSummary();
 
     } catch (error) {
-        console.error("\n❌ Infrastructure initialization failed:", error);
+        logger.error("\n❌ Infrastructure initialization failed:", error);
         throw error;
     }
 }
@@ -56,47 +57,47 @@ export async function initializeInfrastructure(): Promise<void> {
  * Print infrastructure summary
  */
 async function printInfrastructureSummary(): Promise<void> {
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("📊 INFRASTRUCTURE SUMMARY");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    logger.info("📊 INFRASTRUCTURE SUMMARY");
+    logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
     // Memory stats
     const memoryStats = await memoryService.getStats();
-    console.log("🧠 Memory System:");
-    console.log(`   Session Memory: ${memoryStats.session.totalDocs} docs in ${memoryStats.session.projects} projects`);
-    console.log(`   ChromaDB: ${memoryStats.chroma?.totalCollections || 0} collections`);
-    console.log(`   Embeddings: ${memoryStats.embeddings.service} (${memoryStats.embeddings.available ? "✅" : "⚠️"})\n`);
+    logger.info("🧠 Memory System:");
+    logger.info(`   Session Memory: ${memoryStats.session.totalDocs} docs in ${memoryStats.session.projects} projects`);
+    logger.info(`   ChromaDB: ${memoryStats.chroma?.totalCollections || 0} collections`);
+    logger.info(`   Embeddings: ${memoryStats.embeddings.service} (${memoryStats.embeddings.available ? "✅" : "⚠️"})\n`);
 
     // File system stats
     const fsStats = await fsManager.getStats();
-    console.log("📁 File System:");
-    console.log(`   Projects: ${fsStats.projects}`);
-    console.log(`   Files: ${fsStats.totalFiles}`);
-    console.log(`   Size: ${(fsStats.totalSize / 1024 / 1024).toFixed(2)} MB\n`);
+    logger.info("📁 File System:");
+    logger.info(`   Projects: ${fsStats.projects}`);
+    logger.info(`   Files: ${fsStats.totalFiles}`);
+    logger.info(`   Size: ${(fsStats.totalSize / 1024 / 1024).toFixed(2)} MB\n`);
 
     // Chat stats
     const chatStats = chatDB.getStats();
-    console.log("💬 Chat Database:");
-    console.log(`   Messages: ${chatStats.totalMessages}`);
-    console.log(`   Projects: ${chatStats.projects}`);
-    console.log(`   DB Size: ${(chatStats.databaseSize / 1024).toFixed(2)} KB\n`);
+    logger.info("💬 Chat Database:");
+    logger.info(`   Messages: ${chatStats.totalMessages}`);
+    logger.info(`   Projects: ${chatStats.projects}`);
+    logger.info(`   DB Size: ${(chatStats.databaseSize / 1024).toFixed(2)} KB\n`);
 
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 
 /**
  * Graceful shutdown
  */
 export async function shutdownInfrastructure(): Promise<void> {
-    console.log("\n🛑 Shutting down infrastructure...");
+    logger.info("\n🛑 Shutting down infrastructure...");
 
     try {
         chatDB.close();
-        console.log("✅ Chat DB closed");
+        logger.info("✅ Chat DB closed");
 
-        console.log("✅ Infrastructure shutdown complete\n");
+        logger.info("✅ Infrastructure shutdown complete\n");
     } catch (error) {
-        console.error("❌ Shutdown error:", error);
+        logger.error("❌ Shutdown error:", error);
     }
 }
 

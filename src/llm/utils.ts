@@ -2,6 +2,7 @@
  * Normalizes tool definitions to a standard format.
  * Handles both flat (DeepResearchTool) and nested (OpenAI-compatible) formats.
  */
+import { logger } from "../utils/logger";
 export function normalizeTool(tool: any): {
     name: string;
     description: string;
@@ -26,7 +27,7 @@ export function normalizeTool(tool: any): {
     }
 
     // Fallback or error
-    console.warn("[LLM Utils] Unrecognized tool format:", JSON.stringify(tool));
+    logger.warn("[LLM Utils] Unrecognized tool format:", JSON.stringify(tool));
     return {
         name: tool.name || "unknown",
         description: tool.description || "",

@@ -6,6 +6,8 @@
  * Fallback: Ollama (local, free) or simple embeddings
  */
 
+import { logger } from "../../utils/logger";
+
 interface EmbeddingResponse {
     embedding?: number[];
     embeddings?: number[][];
@@ -28,17 +30,17 @@ export class EmbeddingService {
         // Determine provider based on env
         if (process.env.EMBEDDING_PROVIDER === "openai" && this.openaiKey) {
             this.provider = "openai";
-            console.log("[Embeddings] Using OpenAI (text-embedding-3-small)");
+            logger.info("[Embeddings] Using OpenAI (text-embedding-3-small)");
         } else if (process.env.EMBEDDING_PROVIDER === "ollama") {
             this.provider = "ollama";
-            console.log(`[Embeddings] Using Ollama (${this.ollamaModel})`);
+            logger.info(`[Embeddings] Using Ollama (${this.ollamaModel})`);
         } else if (this.openaiKey) {
             // Default to OpenAI if key exists
             this.provider = "openai";
-            console.log("[Embeddings] Using OpenAI (text-embedding-3-small)");
+            logger.info("[Embeddings] Using OpenAI (text-embedding-3-small)");
         } else {
             this.provider = "ollama";
-            console.log("[Embeddings] Using Ollama (will fallback if unavailable)");
+            logger.info("[Embeddings] Using Ollama (will fallback if unavailable)");
         }
     }
 
@@ -60,8 +62,8 @@ export class EmbeddingService {
                     return this.fallbackEmbeddings(texts);
             }
         } catch (error) {
-            console.error(`[Embeddings] ${this.provider} failed:`, error);
-            console.log("[Embeddings] Falling back to simple embeddings");
+            logger.error(`[Embeddings] ${this.provider} failed:`, error);
+            logger.info("[Embeddings] Falling back to simple embeddings");
             return this.fallbackEmbeddings(texts);
         }
     }
@@ -230,7 +232,7 @@ export class EmbeddingService {
                     details: "OpenAI API ($0.02/1M tokens)"
                 };
             } catch (error) {
-                console.error("[Embeddings] OpenAI test failed:", error);
+                logger.error("[Embeddings] OpenAI test failed:", error);
             }
         }
 

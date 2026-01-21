@@ -1,5 +1,6 @@
 // src/tools/index.ts
 import { ToolExecutor } from "./executor";
+import { logger } from "../utils/logger";
 import { memoryTools } from "./memory.tools";
 import { fileTools } from "./file.tools";
 import { communicationTools } from "./communication.tools";
@@ -13,12 +14,12 @@ function RegisterTools() {
     toolExecutor.registerTools([
         ...memoryTools,
         ...fileTools,
-        ...communicationTools,
+        // ...communicationTools,
         ...researchTools
     ]);
 
-    console.log(`[Tools] Registered ${toolExecutor.getToolNames().length} tools:`);
-    console.log(toolExecutor.getToolNames().join(", "));
+    logger.info(`[Tools] Registered ${toolExecutor.getToolNames().length} tools:`);
+    logger.info(toolExecutor.getToolNames().join(", "));
 }
 
 // Export everything

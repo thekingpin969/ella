@@ -3,7 +3,7 @@ import { LLMRequest, Message } from "../../llm/types";
 import { llmService } from "../../llm";
 import { ResearchResult, ResearchReport, ReportSection, RiskItem, ArtifactInfo } from "./types";
 import * as cheerio from "cheerio";
-import { log } from "console";
+import { logger } from "../../utils/logger";
 
 const SERPER_API_KEY = process.env.SERPER_API_KEY || "";
 const MAX_CONTENT_LENGTH = 5000;
@@ -78,8 +78,8 @@ export class DeepResearchTool {
         } = options;
 
         try {
-            console.log(`[DeepResearch] Starting research on: "${topic}"`);
-            console.log(`[DeepResearch] Depth: ${depth}`);
+            logger.info(`[DeepResearch] Starting research on: "${topic}"`);
+            logger.info(`[DeepResearch] Depth: ${depth}`);
 
             const maxIterations = this.getMaxIterations(depth);
             const conversationHistory: Message[] = [];
@@ -103,7 +103,7 @@ export class DeepResearchTool {
             // Research loop
             while (iteration < maxIterations && !researchComplete) {
                 iteration++;
-                console.log(`\n[DeepResearch] Iteration ${iteration}/${maxIterations}`);
+                logger.info(`\n[DeepResearch] Iteration ${iteration}/${maxIterations}`);
 
                 const response = await llmService.chat({
                     messages: conversationHistory,
@@ -112,7 +112,7 @@ export class DeepResearchTool {
                     temperature: 0.4,
                 });
 
-                console.log("Response:", response);
+                logger.debug("Response:", response);
                 // Check if research is complete
                 // @ts-ignore
                 if (response.finish_reason === "stop" || response.finish_reason === "end_turn") {
@@ -131,11 +131,11 @@ export class DeepResearchTool {
                     const toolResults = [];
 
                     for (const toolCall of response.tool_calls) {
-                        console.log(`[DeepResearch] Tool: ${toolCall.function.name}`);
+                        logger.info(`[DeepResearch] Tool: ${toolCall.function.name}`);
                         toolCallsUsed++;
 
                         const result = await this.executeToolCall(toolCall);
-                        log(result)
+                        logger.debug(result)
 
                         toolResults.push({
                             role: "tool" as const,
@@ -163,14 +163,14 @@ export class DeepResearchTool {
                 temperature: 0.3,
             });
 
-            console.log("Final response:", finalResponse);
+            logger.debug("Final response:", finalResponse);
             // Parse the research report
             const report = this.parseResearchReport(finalResponse.content || "", topic);
 
             // Generate artifacts
             const artifacts = this.generateArtifacts(report);
 
-            console.log(`[DeepResearch] Research complete. ${toolCallsUsed} tool calls used`);
+            logger.info(`[DeepResearch] Research complete. ${toolCallsUsed} tool calls used`);
 
             return {
                 success: true,
@@ -185,7 +185,7 @@ export class DeepResearchTool {
             };
 
         } catch (error: any) {
-            console.error("[DeepResearch] Error:", error);
+            logger.error("[DeepResearch] Error:", error);
             return {
                 success: false,
                 query: topic,
@@ -336,7 +336,7 @@ export class DeepResearchTool {
                 results
             }, null, 2);
 
-            log(res)
+            logger.debug(res)
             return res;
 
         } catch (error: any) {

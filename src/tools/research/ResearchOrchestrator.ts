@@ -2,6 +2,7 @@ import { WebSearchTool } from "./WebSearchTool";
 import { DeepResearchTool, DeepResearchOptions } from "./DeepResearchTool";
 import { ResearchResult } from "./types";
 import { memoryService } from "../../memory";
+import { logger } from "../../utils/logger";
 
 export class ResearchOrchestrator {
     private webSearch: WebSearchTool;
@@ -10,7 +11,7 @@ export class ResearchOrchestrator {
     constructor() {
         this.webSearch = new WebSearchTool();
         this.deepResearch = new DeepResearchTool();
-        console.log("[ResearchOrchestrator] Initialized");
+        logger.info("[ResearchOrchestrator] Initialized");
     }
 
     /**
@@ -39,8 +40,8 @@ export class ResearchOrchestrator {
             researchType = complexity === "simple" ? "web_search" : "deep_research";
         }
 
-        console.log(`[ResearchOrchestrator] Query: "${query}"`);
-        console.log(`[ResearchOrchestrator] Type: ${researchType}`);
+        logger.info(`[ResearchOrchestrator] Query: "${query}"`);
+        logger.info(`[ResearchOrchestrator] Type: ${researchType}`);
 
         let results: ResearchResult;
 
@@ -105,7 +106,7 @@ export class ResearchOrchestrator {
         totalQueries: number;
         results: ResearchResult[];
     }> {
-        console.log(`[ResearchOrchestrator] Batch research: ${queries.length} queries`);
+        logger.info(`[ResearchOrchestrator] Batch research: ${queries.length} queries`);
 
         const results: ResearchResult[] = [];
 
@@ -149,9 +150,9 @@ export class ResearchOrchestrator {
                 timestamp: results.timestamp
             });
 
-            console.log(`[ResearchOrchestrator] Saved to memory: ${results.query}`);
+            logger.info(`[ResearchOrchestrator] Saved to memory: ${results.query}`);
         } catch (error) {
-            console.error("[ResearchOrchestrator] Failed to save to memory:", error);
+            logger.error("[ResearchOrchestrator] Failed to save to memory:", error);
         }
     }
 

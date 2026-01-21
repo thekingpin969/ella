@@ -1,4 +1,4 @@
-import { log } from "console";
+import { logger } from "../../utils/logger";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 import { normalizeTool } from "../utils";
 
@@ -30,7 +30,7 @@ export class ClaudeProvider implements LLMProvider {
             throw new Error("ANTHROPIC_API_KEY not found in environment");
         }
 
-        console.log(`[Claude] Initialized with model: ${this.model}`);
+        logger.info(`[Claude] Initialized with model: ${this.model}`);
     }
 
     async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -86,7 +86,7 @@ export class ClaudeProvider implements LLMProvider {
             return this.parseResponse(data);
 
         } catch (error: any) {
-            console.error("[Claude] Chat error:", error);
+            logger.error("[Claude] Chat error:", error);
             throw error;
         }
     }
@@ -226,7 +226,7 @@ export class ClaudeProvider implements LLMProvider {
             const data = await response.json();
             return data.data || [];
         } catch (error) {
-            console.error("[Claude] Failed to fetch models:", error);
+            logger.error("[Claude] Failed to fetch models:", error);
             return [];
         }
     }

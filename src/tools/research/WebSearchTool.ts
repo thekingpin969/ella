@@ -1,5 +1,6 @@
 // src/tools/research/WebSearchTool.ts
 import { LLMRequest } from "../../llm/types";
+import { logger } from "../../utils/logger";
 import { llmService } from "../../llm";
 import { SearchResult, ResearchResult } from "./types";
 import * as cheerio from "cheerio";
@@ -22,7 +23,7 @@ export class WebSearchTool {
      */
     async search(query: string, maxResults: number = 5): Promise<ResearchResult> {
         try {
-            console.log(`[WebSearch] Executing: "${query}"`);
+            logger.info(`[WebSearch] Executing: "${query}"`);
 
             // Step 1: Perform actual web search via Serper
             const searchResults = await this.performWebSearch(query, maxResults);
@@ -44,7 +45,7 @@ export class WebSearchTool {
             // Step 3: Use Claude to synthesize findings
             const synthesis = await this.synthesizeResults(query, enrichedResults);
 
-            console.log(`[WebSearch] Found ${enrichedResults.length} results`);
+            logger.info(`[WebSearch] Found ${enrichedResults.length} results`);
 
             return {
                 success: true,
@@ -64,7 +65,7 @@ export class WebSearchTool {
             };
 
         } catch (error: any) {
-            console.error("[WebSearch] Error:", error);
+            logger.error("[WebSearch] Error:", error);
             return {
                 success: false,
                 query,
@@ -116,7 +117,7 @@ export class WebSearchTool {
 
             return results;
         } catch (error) {
-            console.error("[WebSearch] Serper API error:", error);
+            logger.error("[WebSearch] Serper API error:", error);
             throw error;
         }
     }
@@ -133,7 +134,7 @@ export class WebSearchTool {
                     const content = await this.fetchAndExtract(result.link);
                     return { ...result, content, url: result.link };
                 } catch (error) {
-                    console.error(`[WebSearch] Failed to fetch ${result.link}:`, error);
+                    logger.error(`[WebSearch] Failed to fetch ${result.link}:`, error);
                     return { ...result, url: result.link };
                 }
             })

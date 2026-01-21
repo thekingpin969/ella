@@ -1,5 +1,6 @@
 // src/fs/FileSystemManager.ts
 import fs from "fs/promises";
+import { logger } from "../utils/logger";
 import path from "path";
 import { existsSync, mkdirSync } from "fs";
 import { updateFile, uploadFile } from "../db/drive";
@@ -20,7 +21,7 @@ export class FileSystemManager {
     private ensureWorkspaceExists(): void {
         if (!existsSync(this.workspaceRoot)) {
             mkdirSync(this.workspaceRoot, { recursive: true });
-            console.log(`[FSM] Created workspace: ${this.workspaceRoot}`);
+            logger.info(`[FSM] Created workspace: ${this.workspaceRoot}`);
         }
     }
 
@@ -40,7 +41,7 @@ export class FileSystemManager {
         const projectPath = this.getProjectPath(projectId);
 
         if (existsSync(projectPath)) {
-            console.log(`[FSM] Project workspace already exists: ${projectId}`);
+            logger.info(`[FSM] Project workspace already exists: ${projectId}`);
             return;
         }
 
@@ -51,19 +52,19 @@ export class FileSystemManager {
             await fs.mkdir(dirPath, { recursive: true });
         }
 
-        console.log(`[FSM] ✅ Initialized workspace: ${projectId}`);
+        logger.info(`[FSM] ✅ Initialized workspace: ${projectId}`);
     }
 
     async cleanProject(projectId: string): Promise<void> {
         const projectPath = this.getProjectPath(projectId);
 
         if (!existsSync(projectPath)) {
-            console.log(`[FSM] Nothing to clean: ${projectId}`);
+            logger.info(`[FSM] Nothing to clean: ${projectId}`);
             return;
         }
 
         await fs.rm(projectPath, { recursive: true, force: true });
-        console.log(`[FSM] 🗑️ Cleaned workspace: ${projectId}`);
+        logger.info(`[FSM] 🗑️ Cleaned workspace: ${projectId}`);
     }
 
     // ==========================================
@@ -80,7 +81,7 @@ export class FileSystemManager {
 
         await fs.mkdir(directory, { recursive: true });
         await fs.writeFile(fullPath, content, "utf-8");
-        console.log(`[FSM] ✅ Written: ${relativePath}`);
+        logger.info(`[FSM] ✅ Written: ${relativePath}`);
 
         return fullPath;
     }
@@ -104,7 +105,7 @@ export class FileSystemManager {
 
         if (existsSync(fullPath)) {
             await fs.unlink(fullPath);
-            console.log(`[FSM] 🗑️ Deleted: ${relativePath}`);
+            logger.info(`[FSM] 🗑️ Deleted: ${relativePath}`);
         }
     }
 
@@ -134,7 +135,7 @@ export class FileSystemManager {
         const backupPath = `${relativePath}.backup-${timestamp}`;
 
         await this.writeFile(projectId, backupPath, content);
-        console.log(`[FSM] 💾 Backup created: ${backupPath}`);
+        logger.info(`[FSM] 💾 Backup created: ${backupPath}`);
 
         return backupPath;
     }
@@ -146,7 +147,7 @@ export class FileSystemManager {
     ): Promise<void> {
         const content = await this.readFile(projectId, backupPath);
         await this.writeFile(projectId, targetPath, content);
-        console.log(`[FSM] ♻️ Restored: ${targetPath} from ${backupPath}`);
+        logger.info(`[FSM] ♻️ Restored: ${targetPath} from ${backupPath}`);
     }
 
     // ==========================================
@@ -202,12 +203,12 @@ export class FileSystemManager {
             const content = await this.readFile(projectId, relativePath);
             await updateFile(existingFile.driveFileId, content);
             driveFileId = existingFile.driveFileId;
-            console.log(`[FSM] ☁️ Updated in Drive: ${relativePath}`);
+            logger.info(`[FSM] ☁️ Updated in Drive: ${relativePath}`);
         } else {
             const fileName = path.basename(relativePath);
             const mimeType = this.getMimeType(fileName);
             driveFileId = await uploadFile(fullPath, fileName, mimeType, driveFolderId);
-            console.log(`[FSM] ☁️ Uploaded to Drive: ${relativePath}`);
+            logger.info(`[FSM] ☁️ Uploaded to Drive: ${relativePath}`);
         }
 
         await filesCollection.updateOne(
@@ -254,7 +255,7 @@ export class FileSystemManager {
         await Promise.all(
             files.map(file => this.writeFile(projectId, file.path, file.content))
         );
-        console.log(`[FSM] ✅ Written ${files.length} files`);
+        logger.info(`[FSM] ✅ Written ${files.length} files`);
     }
 
     async syncProjectToDrive(
@@ -269,11 +270,11 @@ export class FileSystemManager {
                 await this.syncToDrive(projectId, file, driveFolderId);
                 synced++;
             } catch (error) {
-                console.error(`[FSM] Failed to sync ${file}:`, error);
+                logger.error(`[FSM] Failed to sync ${file}:`, error);
             }
         }
 
-        console.log(`[FSM] ☁️ Synced ${synced}/${files.length} files to Drive`);
+        logger.info(`[FSM] ☁️ Synced ${synced}/${files.length} files to Drive`);
         return synced;
     }
 

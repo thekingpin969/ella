@@ -144,48 +144,116 @@ export class PlanHandler extends BaseHandler {
         unfillableGaps: string[]
     }> {
         try {
+            this.log(`Starting gap filling for ${gaps.length} gaps...`);
+
+            // Step 1: Identify which gaps are fillable vs unfillable
+            const { fillable, unfillable } = await this.identifyFillableGaps(description, gaps);
+
+            this.log(`Identified ${fillable.length} fillable gaps and ${unfillable.length} unfillable gaps.`);
+
+            // Step 2: "Manually hard coded" parallel execution for fillable gaps
+            const filledResults = await Promise.all(
+                fillable.map(async (gapItem) => {
+                    return this.fillGap(context, description, gapItem.gap);
+                })
+            );
+
+            // Filter out any failed fills (if any returned null/undefined, though our type says they return a structured object)
+            // But fillGap handles internal errors and might return a partial result or throw? 
+            // Let's ensure fillGap returns a safe object.
+
+            return {
+                filledGaps: filledResults,
+                unfillableGaps: unfillable.map(u => u.gap)
+            };
+
+        } catch (error: any) {
+            this.log(`Error in gap filling research: ${error.message}`);
+            return {
+                filledGaps: [],
+                unfillableGaps: gaps
+            }
+        }
+    }
+
+    /**
+     * NEW: Classify gaps into fillable (technical) and unfillable (business)
+     */
+    private async identifyFillableGaps(description: string, gaps: string[]): Promise<{
+        fillable: Array<{ gap: string, reason: string }>,
+        unfillable: Array<{ gap: string, reason: string }>
+    }> {
+        try {
             const response = await llmService.chat({
                 messages: [
                     {
                         role: "system",
-                        content: PROMPTS.GAP_FILLING_PROMPT
+                        content: PROMPTS.GAP_CLASSIFICATION_PROMPT
                     },
                     {
                         role: "user",
-                        content: JSON.stringify({
-                            description,
-                            gaps,
-                        })
+                        content: JSON.stringify({ description, gaps })
                     }
                 ],
+                temperature: 0.1, // Low temp for classification
+                max_tokens: 4000
+            });
+
+            const parsed = this.parseJSONResponse(response.content || "{}");
+            return {
+                fillable: parsed.fillable || [],
+                unfillable: parsed.unfillable || []
+            };
+        } catch (error) {
+            this.log("Error identifying fillable gaps", error);
+            // Fallback: assume all are unfillable to be safe
+            return { fillable: [], unfillable: gaps.map(g => ({ gap: g, reason: "Error in classification" })) };
+        }
+    }
+
+    /**
+     * NEW: Fill a single gap using research tools
+     */
+    private async fillGap(context: Context, description: string, gap: string): Promise<{
+        gap: string,
+        resolution: string,
+        source: string
+    }> {
+        try {
+            this.log(`Filling gap: ${gap}`);
+
+            const response = await llmService.chat({
+                messages: [
+                    {
+                        role: "system",
+                        content: PROMPTS.SINGLE_GAP_FILLING_PROMPT
+                            .replace("{{GAP}}", gap)
+                            .replace("{{DESCRIPTION}}", description)
+                    }
+                ],
+                // Provide tools so it can research
                 tools: toolExecutor.getToolDefinitions(),
                 tool_choice: "auto",
                 temperature: 0.4,
-                max_tokens: 16000
-            })
+                max_tokens: 4000
+            });
 
             // Handle tool calls if E.L.L.A decided to research
             if (response.tool_calls && response.tool_calls.length > 0) {
-                this.log(`E.L.L.A is using ${response.tool_calls.length} tools to research gaps`)
-                this.log(`Tool calls: ${JSON.stringify(response.tool_calls)}`)
                 // Execute tools
-                const toolCalls = toolExecutor.parseToolCalls(response)
-                const toolResults = await toolExecutor.executeTools(toolCalls, context)
+                const toolCalls = toolExecutor.parseToolCalls(response);
+                const toolResults = await toolExecutor.executeTools(toolCalls, context);
 
-                this.log(toolCalls, `Tool results: ${JSON.stringify(toolResults)}`)
-
-                // Get final response with research results
-                const toolMessages = toolExecutor.formatToolResponses(toolResults)
+                // Get final response
+                const toolMessages = toolExecutor.formatToolResponses(toolResults);
 
                 const finalResponse = await llmService.chat({
                     messages: [
                         {
                             role: "system",
-                            content: PROMPTS.GAP_FILLING_PROMPT
-                        },
-                        {
-                            role: "user",
-                            content: JSON.stringify({ description, gaps })
+                            content: PROMPTS.SINGLE_GAP_FILLING_PROMPT
+                                .replace("{{GAP}}", gap)
+                                .replace("{{DESCRIPTION}}", description)
                         },
                         {
                             role: "assistant",
@@ -199,73 +267,35 @@ export class PlanHandler extends BaseHandler {
                             name: tm.name
                         }))
                     ],
-                    tools: toolExecutor.getToolDefinitions(),
-                    tool_choice: "auto",
-                    temperature: 0.4,
-                    max_tokens: 16000
-                })
-                this.log(finalResponse, [
-                    {
-                        role: "system",
-                        content: PROMPTS.GAP_FILLING_PROMPT
-                    },
-                    {
-                        role: "user",
-                        content: JSON.stringify({ description, gaps })
-                    },
-                    {
-                        role: "assistant",
-                        content: response.content || "",
-                        tool_calls: response.tool_calls
-                    },
-                    ...toolMessages.map(tm => ({
-                        role: "tool" as const,
-                        content: tm.content,
-                        tool_call_id: tm.tool_call_id,
-                        name: tm.name
-                    }))
-                ])
-                return this.parseGapFillingResult(finalResponse.content || "")
+                    temperature: 0.4
+                });
+
+                const parsed = this.parseJSONResponse(finalResponse.content || "{}");
+                return {
+                    gap,
+                    resolution: parsed.resolution || "Could not resolve",
+                    source: parsed.source || "research"
+                };
             }
-            this.log(response, "Gap filling response")
-            // No tools used - parse direct response
-            return this.parseGapFillingResult(response.content || "")
+
+            // Direct response
+            const parsed = this.parseJSONResponse(response.content || "{}");
+            return {
+                gap,
+                resolution: parsed.resolution || "Could not resolve",
+                source: parsed.source || "research"
+            };
 
         } catch (error: any) {
-            this.log(`Error in gap filling research: ${error.message}`)
+            this.log(`Failed to fill gap: ${gap}`, error);
             return {
-                filledGaps: [],
-                unfillableGaps: gaps
-            }
+                gap,
+                resolution: "Failed to resolve due to error",
+                source: "error"
+            };
         }
     }
-    /**
-     * NEW: Parse gap filling result from LLM response
-     */
-    private parseGapFillingResult(content: string): {
-        filledGaps: Array<{ gap: string, resolution: string, source: string }>,
-        unfillableGaps: string[]
-    } {
-        try {
-            const cleaned = content
-                .replace(/```json\n?/g, '')
-                .replace(/```\n?/g, '')
-                .trim()
 
-            const parsed = JSON.parse(cleaned)
-
-            return {
-                filledGaps: parsed.filledGaps || [],
-                unfillableGaps: parsed.unfillableGaps || []
-            }
-        } catch (error) {
-            this.log('Failed to parse gap filling result, returning empty', error)
-            return {
-                filledGaps: [],
-                unfillableGaps: []
-            }
-        }
-    }
 
     /**
      * NEW: Recalculate confidence with filled gaps

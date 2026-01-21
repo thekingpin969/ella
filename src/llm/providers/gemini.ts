@@ -1,6 +1,7 @@
 // src/llm/providers/gemini.ts
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 import { normalizeTool } from "../utils";
+import { logger } from "../../utils/logger";
 
 export class GeminiProvider implements LLMProvider {
     name = "gemini";
@@ -18,7 +19,7 @@ export class GeminiProvider implements LLMProvider {
             throw new Error("GEMINI_API_KEY not found in environment");
         }
 
-        console.log(`[Gemini] Initialized with model: ${this.model}`);
+        logger.info(`[Gemini] Initialized with model: ${this.model}`);
     }
 
     async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -56,7 +57,7 @@ export class GeminiProvider implements LLMProvider {
             return this.parseResponse(data);
 
         } catch (error: any) {
-            console.error("[Gemini] Chat error:", error);
+            logger.error("[Gemini] Chat error:", error);
             throw error;
         }
     }

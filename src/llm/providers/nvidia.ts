@@ -1,5 +1,6 @@
 // src/llm/providers/nvidia.ts
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
+import { logger } from "../../utils/logger";
 
 /**
  * NVIDIA Provider for E.L.L.A
@@ -42,9 +43,9 @@ export class NvidiaProvider implements LLMProvider {
             throw new Error("NVIDIA_API_KEY not found in environment");
         }
 
-        console.log(`[NVIDIA] Initialized with model: ${this.model}`);
+        logger.info(`[NVIDIA] Initialized with model: ${this.model}`);
         if (this.includeReasoning) {
-            console.log(`[NVIDIA] Reasoning extraction enabled`);
+            logger.info(`[NVIDIA] Reasoning extraction enabled`);
         }
     }
 
@@ -91,7 +92,7 @@ export class NvidiaProvider implements LLMProvider {
             return this.parseResponse(data);
 
         } catch (error: any) {
-            console.error("[NVIDIA] Chat error:", error);
+            logger.error("[NVIDIA] Chat error:", error);
             throw error;
         }
     }
@@ -125,15 +126,17 @@ export class NvidiaProvider implements LLMProvider {
 
     private convertTools(tools: any[]): any[] {
         // NVIDIA API uses OpenAI-compatible tool format
-        console.log('tools', tools)
-        return tools.map(tool => ({
-            type: "function",
-            function: {
-                name: tool!.name || tool!.function!.name,
-                description: tool!.description || tool!.function!.description,
-                parameters: tool!.parameter || tool!.function!.parameter
-            }
-        }));
+        logger.debug('tools', tools)
+        return tools.map(tool => {
+            return {
+                type: "function",
+                function: {
+                    name: tool!.name || tool!.function!.name,
+                    description: tool!.description || tool!.function!.description,
+                    parameters: tool!.parameters || tool!.function?.parameters || tool!.parameter || tool!.function?.parameter
+                }
+            };
+        });
     }
 
     private parseResponse(data: any): LLMResponse {
@@ -171,8 +174,8 @@ export class NvidiaProvider implements LLMProvider {
 
         // Log reasoning for debugging/analysis
         if (reasoning && this.includeReasoning) {
-            console.log(`[NVIDIA] 🧠 Reasoning (${data.usage?.reasoning_tokens || 0} tokens):`);
-            console.log(reasoning.substring(0, 200) + (reasoning.length > 200 ? '...' : ''));
+            logger.debug(`[NVIDIA] 🧠 Reasoning (${data.usage?.reasoning_tokens || 0} tokens):`);
+            logger.debug(reasoning.substring(0, 200) + (reasoning.length > 200 ? '...' : ''));
         }
 
         return {
@@ -205,7 +208,7 @@ export class NvidiaProvider implements LLMProvider {
             const data = await response.json();
             return data.data || [];
         } catch (error) {
-            console.error("[NVIDIA] Failed to fetch models:", error);
+            logger.error("[NVIDIA] Failed to fetch models:", error);
             return [];
         }
     }
@@ -228,7 +231,7 @@ export class NvidiaProvider implements LLMProvider {
         reasoning: string | null;
         cleanContent: string;
     } {
-        console.log(content);
+        logger.debug(content);
         const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
         const matches = content!.match(thinkRegex);
 

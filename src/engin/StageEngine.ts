@@ -6,6 +6,7 @@ import { PlanHandler } from "./handlers/PlanHandler";
 import { ImplementationHandler } from "./handlers/ImplementationHandler";
 import { ReviewHandler } from "./handlers/ReviewHandler";
 import { ExecutorHandler } from "./handlers/ExecutorHandler";
+import { logger } from "../utils/logger";
 
 export class StageEngine {
     // In-memory context storage
@@ -21,7 +22,7 @@ export class StageEngine {
         this.handlers.set(Stage.REVIEW, new ReviewHandler());
         this.handlers.set(Stage.TESTING, new ExecutorHandler());
 
-        console.log("[StageEngine] Initialized with handlers:", Array.from(this.handlers.keys()));
+        logger.info("[StageEngine] Initialized with handlers:" + Array.from(this.handlers.keys()).join(', '));
     }
 
     createContext(projectId: string, projectName: string, driveFolderId: string, initialDescription?: string): Context {
@@ -39,7 +40,7 @@ export class StageEngine {
             artifacts: []
         };
         this.contexts.set(projectId, context);
-        console.log(`[StageEngine] Context created for ${projectId}`);
+        logger.info(`[StageEngine] Context created for ${projectId}`);
         return context;
     }
 
@@ -62,19 +63,19 @@ export class StageEngine {
             timestamp: event.timestamp || new Date().toISOString()
         };
 
-        console.log(`[StageEngine] Event received: ${fullEvent.name} for ${fullEvent.projectId}`);
+        logger.info(`[StageEngine] Event received: ${fullEvent.name} for ${fullEvent.projectId}`);
 
         // Get context
         const context = this.contexts.get(fullEvent.projectId);
         if (!context) {
-            console.error(`[StageEngine] Context not found: ${fullEvent.projectId}`);
+            logger.error(`[StageEngine] Context not found: ${fullEvent.projectId}`);
             return;
         }
 
         // Get handler for current stage
         const handler = this.handlers.get(context.stage);
         if (!handler) {
-            console.error(`[StageEngine] No handler for stage: ${context.stage}`);
+            logger.error(`[StageEngine] No handler for stage: ${context.stage}`);
             return;
         }
 
@@ -120,7 +121,7 @@ export class StageEngine {
         const oldStage = context.stage;
         context.stage = newStage;
 
-        console.log(`[StageEngine] Stage transition: ${oldStage} → ${newStage} for ${context.projectId}`);
+        logger.info(`[StageEngine] Stage transition: ${oldStage} → ${newStage} for ${context.projectId}`);
 
         // Emit event to new stage handler
         this.emitEvent({

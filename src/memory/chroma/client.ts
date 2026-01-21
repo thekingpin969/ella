@@ -1,5 +1,6 @@
 // src/memory/chroma/client.ts
 import { ChromaClient, Collection, CloudClient } from "chromadb";
+import { logger } from "../../utils/logger";
 
 class ChromaDBManager {
     private client: ChromaClient;
@@ -24,7 +25,7 @@ class ChromaDBManager {
         if (this.initialized) return;
 
         try {
-            console.log("[ChromaDB] Initializing collections...");
+            logger.info("[ChromaDB] Initializing collections...");
 
             // Global Memory Collection
             const globalCollection = await this.client.getOrCreateCollection({
@@ -36,10 +37,10 @@ class ChromaDBManager {
             });
             this.collections.set("global_memory", globalCollection);
 
-            console.log("[ChromaDB] ✅ Global memory collection ready");
+            logger.info("[ChromaDB] ✅ Global memory collection ready");
             this.initialized = true;
         } catch (error) {
-            console.error("[ChromaDB] ❌ Initialization failed:", error);
+            logger.error("[ChromaDB] ❌ Initialization failed:", error);
             throw error;
         }
     }
@@ -65,10 +66,10 @@ class ChromaDBManager {
             });
 
             this.collections.set(collectionName, collection);
-            console.log(`[ChromaDB] ✅ Project collection created: ${collectionName}`);
+            logger.info(`[ChromaDB] ✅ Project collection created: ${collectionName}`);
             return collection;
         } catch (error) {
-            console.error(`[ChromaDB] ❌ Failed to create project collection:`, error);
+            logger.error(`[ChromaDB] ❌ Failed to create project collection:`, error);
             throw error;
         }
     }
@@ -91,9 +92,9 @@ class ChromaDBManager {
         try {
             await this.client.deleteCollection({ name: collectionName });
             this.collections.delete(collectionName);
-            console.log(`[ChromaDB] 🗑️ Deleted collection: ${collectionName}`);
+            logger.info(`[ChromaDB] 🗑️ Deleted collection: ${collectionName}`);
         } catch (error) {
-            console.error(`[ChromaDB] ❌ Failed to delete collection:`, error);
+            logger.error(`[ChromaDB] ❌ Failed to delete collection:`, error);
         }
     }
 
@@ -105,7 +106,7 @@ class ChromaDBManager {
             await this.client.heartbeat();
             return true;
         } catch (error) {
-            console.error("[ChromaDB] ❌ Health check failed:", error);
+            logger.error("[ChromaDB] ❌ Health check failed:", error);
             return false;
         }
     }
@@ -124,7 +125,7 @@ class ChromaDBManager {
                 }))
             };
         } catch (error) {
-            console.error("[ChromaDB] ❌ Failed to get stats:", error);
+            logger.error("[ChromaDB] ❌ Failed to get stats:", error);
             return null;
         }
     }

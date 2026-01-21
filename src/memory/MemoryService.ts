@@ -1,5 +1,6 @@
 // src/memory/MemoryService.ts
 import { chromaDB } from "./chroma/client";
+import { logger } from "../utils/logger";
 import { MemoryLayer, MemoryDocument, MemoryQuery, MemoryResult } from "./types";
 import { embeddingService } from "./embeddings/EmbeddingService";
 import { v4 as uuidv4 } from "uuid";
@@ -15,7 +16,7 @@ export class MemoryService {
     private sessionMemory: Map<string, Map<string, MemoryDocument>> = new Map();
 
     constructor() {
-        console.log("[MemoryService] Initialized");
+        logger.info("[MemoryService] Initialized");
     }
 
     /**
@@ -26,9 +27,9 @@ export class MemoryService {
 
         const embeddingHealth = await embeddingService.healthCheck();
         if (!embeddingHealth.available) {
-            console.warn("[MemoryService] ⚠️ Embeddings degraded, using fallback");
+            logger.warn("[MemoryService] ⚠️ Embeddings degraded, using fallback");
         } else {
-            console.log(`[MemoryService] ✅ Embeddings ready (${embeddingHealth.provider})`);
+            logger.info(`[MemoryService] ✅ Embeddings ready (${embeddingHealth.provider})`);
         }
     }
 
@@ -54,7 +55,7 @@ export class MemoryService {
         };
 
         this.sessionMemory.get(projectId)!.set(key, doc);
-        console.log(`[SessionMemory] Stored: ${projectId}/${key}`);
+        logger.info(`[SessionMemory] Stored: ${projectId}/${key}`);
     }
 
     getSession(projectId: string, key: string): MemoryDocument | null {
@@ -68,7 +69,7 @@ export class MemoryService {
 
     clearSession(projectId: string): void {
         this.sessionMemory.delete(projectId);
-        console.log(`[SessionMemory] Cleared: ${projectId}`);
+        logger.info(`[SessionMemory] Cleared: ${projectId}`);
     }
 
     // ==========================================
@@ -99,10 +100,10 @@ export class MemoryService {
                 }]
             });
 
-            console.log(`[ProjectMemory] Stored with embedding: ${projectId}/${id}`);
+            logger.info(`[ProjectMemory] Stored with embedding: ${projectId}/${id}`);
             return id;
         } catch (error) {
-            console.error("[ProjectMemory] Failed to store:", error);
+            logger.error("[ProjectMemory] Failed to store:", error);
             throw error;
         }
     }
@@ -132,10 +133,10 @@ export class MemoryService {
                 metadatas
             });
 
-            console.log(`[ProjectMemory] Batch stored ${ids.length} documents with embeddings`);
+            logger.info(`[ProjectMemory] Batch stored ${ids.length} documents with embeddings`);
             return ids;
         } catch (error) {
-            console.error("[ProjectMemory] Failed to batch store:", error);
+            logger.error("[ProjectMemory] Failed to batch store:", error);
             throw error;
         }
     }
@@ -168,7 +169,7 @@ export class MemoryService {
                 metadata: results.metadatas?.[0]?.[idx] || {}
             }));
         } catch (error) {
-            console.error("[ProjectMemory] Query failed:", error);
+            logger.error("[ProjectMemory] Query failed:", error);
             return [];
         }
     }
@@ -189,7 +190,7 @@ export class MemoryService {
                 metadata: results.metadatas?.[idx] || {}
             }));
         } catch (error) {
-            console.error("[ProjectMemory] Failed to get all:", error);
+            logger.error("[ProjectMemory] Failed to get all:", error);
             return [];
         }
     }
@@ -221,10 +222,10 @@ export class MemoryService {
                 }]
             });
 
-            console.log(`[GlobalMemory] Stored with embedding: ${id}`);
+            logger.info(`[GlobalMemory] Stored with embedding: ${id}`);
             return id;
         } catch (error) {
-            console.error("[GlobalMemory] Failed to store:", error);
+            logger.error("[GlobalMemory] Failed to store:", error);
             throw error;
         }
     }
@@ -256,7 +257,7 @@ export class MemoryService {
                 metadata: results.metadatas?.[0]?.[idx] || {}
             }));
         } catch (error) {
-            console.error("[GlobalMemory] Query failed:", error);
+            logger.error("[GlobalMemory] Query failed:", error);
             return [];
         }
     }
@@ -310,12 +311,12 @@ export class MemoryService {
     async promoteToProject(projectId: string, sessionKey: string): Promise<string | null> {
         const sessionDoc = this.getSession(projectId, sessionKey);
         if (!sessionDoc) {
-            console.warn(`[Memory] Cannot promote: session key not found: ${sessionKey}`);
+            logger.warn(`[Memory] Cannot promote: session key not found: ${sessionKey}`);
             return null;
         }
 
         const id = await this.storeProject(projectId, sessionDoc.content, sessionDoc.metadata);
-        console.log(`[Memory] Promoted to project: ${sessionKey} → ${id}`);
+        logger.info(`[Memory] Promoted to project: ${sessionKey} → ${id}`);
         return id;
     }
 
@@ -325,7 +326,7 @@ export class MemoryService {
             sourceProjectId: projectId,
             promotedAt: new Date().toISOString()
         });
-        console.log(`[Memory] Promoted to global from project ${projectId}`);
+        logger.info(`[Memory] Promoted to global from project ${projectId}`);
         return id;
     }
 

@@ -1,4 +1,4 @@
-import { log } from "console";
+import { logger } from "../../utils/logger";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 import { normalizeTool } from "../utils";
 
@@ -27,7 +27,7 @@ export class OpenRouterProvider implements LLMProvider {
             throw new Error("OPEN_ROUTER_API_KEY not found in environment");
         }
 
-        console.log(`[OpenRouter] Initialized with model: ${this.model}`);
+        logger.info(`[OpenRouter] Initialized with model: ${this.model}`);
     }
 
     async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -70,11 +70,11 @@ export class OpenRouterProvider implements LLMProvider {
             }
 
             const data = await response.json();
-            log(data, data.choices)
+            logger.debug(data, data.choices)
             return this.parseResponse(data);
 
         } catch (error: any) {
-            console.error("[OpenRouter] Chat error:", error);
+            logger.error("[OpenRouter] Chat error:", error);
             throw error;
         }
     }
@@ -168,7 +168,7 @@ export class OpenRouterProvider implements LLMProvider {
             const data = await response.json();
             return data.data || [];
         } catch (error) {
-            console.error("[OpenRouter] Failed to fetch models:", error);
+            logger.error("[OpenRouter] Failed to fetch models:", error);
             return [];
         }
     }

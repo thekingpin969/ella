@@ -1,4 +1,5 @@
 import { MongoClient, Db } from "mongodb";
+import { logger } from "../../utils/logger";
 
 let db: Db;
 
@@ -10,9 +11,9 @@ export async function connectToDB() {
     const client = new MongoClient(MONGO_URI);
     await client.connect();
     db = client.db(DB_NAME);
-    console.log(`[DB] Connected to ${MONGO_URI}`);
+    logger.info(`[DB] Connected to ${MONGO_URI}`);
   } catch (error) {
-    console.error("[DB] Failed to connect to MongoDB", error);
+    logger.error("[DB] Failed to connect to MongoDB", error);
     process.exit(1);
   }
 }

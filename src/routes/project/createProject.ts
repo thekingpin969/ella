@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
+import { logger } from "../../utils/logger";
 import { getDB } from "../../db/mongodb/client";
 import { createProjectSchema } from "../../utils/validation";
 import { generateId } from "../../utils/id";
@@ -68,7 +69,7 @@ createProject.post("/", zValidator("json", createProjectSchema), async (c) => {
       201,
     );
   } catch (err: any) {
-    // console.error(err);
+    logger.error("Create project failed:", err);
     return c.json(
       {
         error: {

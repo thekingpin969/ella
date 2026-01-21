@@ -1,6 +1,7 @@
 import { ServerWebSocket } from "bun";
 import { WSMessage } from "./types";
 import { chatDB } from "../db/chatStorage";
+import { logger } from "../utils/logger";
 
 /**
  * Interface for the WebSocket context.
@@ -37,7 +38,7 @@ class WebSocketManager {
       this.connections.set(projectId, new Set());
     }
     this.connections.get(projectId)!.add(ws);
-    console.log(
+    logger.info(
       `[WS] Client connected to project ${projectId}. Total clients: ${this.connections.get(projectId)?.size}`,
     );
   }
@@ -55,7 +56,7 @@ class WebSocketManager {
         this.connections.delete(projectId);
       }
     }
-    console.log(`[WS] Client disconnected from project ${projectId}`);
+    logger.info(`[WS] Client disconnected from project ${projectId}`);
   }
 
   /**
@@ -65,13 +66,13 @@ class WebSocketManager {
    */
   public broadcast(projectId: string, message: WSMessage) {
     const projectConns = this.connections.get(projectId);
-    if (!projectConns) return console.log(projectConns);
+    if (!projectConns) return logger.warn(`No connections found for project ${projectId} when broadcasting`);
 
     const payload = JSON.stringify(message);
     for (const ws of projectConns) {
       if (ws.readyState === 1) {
         // Open
-        console.log(payload);
+        logger.debug(payload);
         ws.send(payload);
       }
     }
@@ -90,7 +91,7 @@ class WebSocketManager {
       let total = 0;
       for (const set of this.connections.values()) total += set.size;
       if (total > 0) {
-        console.log(
+        logger.debug(
           `[WS] Heartbeat. Active projects: ${this.connections.size}, Total clients: ${total}`,
         );
       }
@@ -115,7 +116,7 @@ class WebSocketManager {
       timestamp: payload.timestamp,
       type: payload.type
     })
-    if (!projectConns) return console.log('no clients for ', projectId);
+    if (!projectConns) return logger.warn('no clients for ', projectId);
     for (const ws of projectConns) {
       if (ws.readyState === 1) {
         ws.send(JSON.stringify(payload));
@@ -145,10 +146,10 @@ class WebSocketManager {
       timestamp: payload.timestamp,
       type: payload.type
     })
-    if (!projectConns) return console.log('no clients for ', projectId);
+    if (!projectConns) return logger.warn('no clients for ', projectId);
     for (const ws of projectConns) {
       if (ws.readyState === 1) {
-        // console.log(payload);
+
         ws.send(JSON.stringify(payload));
       }
     }
@@ -160,7 +161,7 @@ class WebSocketManager {
 
   public sendFiller(projectId: string, filler: string) {
     const projectConns = this.connections.get(projectId);
-    if (!projectConns) return console.log('no clients for ', projectId);
+    if (!projectConns) return logger.warn('no clients for ', projectId);
     const payload = {
       type: "typing",
       timestamp: new Date().toISOString(),

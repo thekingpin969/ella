@@ -2,7 +2,8 @@ import { config } from 'dotenv'
 // config({ path: './.env' })
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
-import { logger } from "hono/logger";
+import { logger as honoLogger } from "hono/logger";
+import { logger } from "./src/utils/logger";
 import { cors } from "hono/cors";
 import projectRoutes from "./src/routes/projects";
 import { wsManager } from "./src/websocket/manager";
@@ -16,7 +17,7 @@ const app = new Hono();
 const { upgradeWebSocket, websocket } = createBunWebSocket<any>();
 
 // Middleware
-app.use("*", logger());
+app.use("*", honoLogger());
 app.use("*", cors());
 
 // await authorize()
@@ -48,7 +49,7 @@ app.get(
       },
       onMessage(event: any, ws: any) {
         const message = JSON.parse(event.data);
-        console.log("Received message:", message);
+        logger.info("Received message:", message);
 
         stageEngine.emitEvent({
           name: 'user_response',
@@ -70,7 +71,7 @@ app.get(
 
 // Global Error Handler
 app.onError((err, c) => {
-  console.error("[Server Error]", err);
+  logger.error("[Server Error]", err.message);
   return c.json(
     {
       error: {
@@ -87,7 +88,7 @@ const port = process.env.PORT || 3000;
 
 await initializeInfrastructure()
 RegisterTools()
-console.log(`[Server] E.L.L.A API running on port ${port}`);
+logger.info(`[Server] E.L.L.A API running on port ${port}`);
 
 export default {
   port,

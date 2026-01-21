@@ -1,4 +1,4 @@
-import { log } from "console";
+import { logger } from "../../utils/logger";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
 
 export class CloudflareProvider implements LLMProvider {
@@ -23,7 +23,7 @@ export class CloudflareProvider implements LLMProvider {
         }
 
         this.baseUrl = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/v1`;
-        console.log(`[Cloudflare] Initialized with model: ${this.model}`);
+        logger.info(`[Cloudflare] Initialized with model: ${this.model}`);
     }
 
     async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -49,7 +49,7 @@ export class CloudflareProvider implements LLMProvider {
                 body.tool_choice = request.tool_choice || "auto";
             }
 
-            log(body)
+            logger.debug(JSON.stringify(body))
             // Native Cloudflare endpoint: /ai/run/{model}
             const url = `https://api.cloudflare.com/client/v4/accounts/${this.accountId}/ai/run/${this.model}`;
 
@@ -68,11 +68,11 @@ export class CloudflareProvider implements LLMProvider {
             }
 
             const data = await response.json();
-            console.log(data.result)
+            logger.debug(data.result)
             return this.parseResponse(data.result);
 
         } catch (error: any) {
-            console.error("[Cloudflare] Chat error:", error);
+            logger.error("[Cloudflare] Chat error:", error);
             throw error;
         }
     }
@@ -177,7 +177,7 @@ export class CloudflareProvider implements LLMProvider {
             const data = await response.json();
             return data.result || [];
         } catch (error) {
-            console.error("[Cloudflare] Failed to fetch models:", error);
+            logger.error("[Cloudflare] Failed to fetch models:", error);
             return [];
         }
     }
@@ -216,7 +216,7 @@ export class CloudflareProvider implements LLMProvider {
 
             return embeddings;
         } catch (error) {
-            console.error("[Cloudflare] Embedding error:", error);
+            logger.error("[Cloudflare] Embedding error:", error);
             throw error;
         }
     }

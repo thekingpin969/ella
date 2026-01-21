@@ -1,5 +1,5 @@
 // src/tools/executor.ts
-import { log } from "console";
+import { logger } from "../utils/logger";
 import { Context } from "../engin/types/context";
 import { ToolCall, ToolResponse, ToolDefinition } from "./types";
 import { v4 as uuidv4 } from "uuid";
@@ -8,7 +8,7 @@ export class ToolExecutor {
     private tools: Map<string, ToolDefinition> = new Map();
 
     constructor() {
-        console.log("[ToolExecutor] Initialized");
+        logger.info("[ToolExecutor] Initialized");
     }
 
     /**
@@ -16,7 +16,7 @@ export class ToolExecutor {
      */
     registerTool(tool: ToolDefinition): void {
         this.tools.set(tool.name, tool);
-        console.log(`[ToolExecutor] Registered tool: ${tool.name}`);
+        logger.info(`[ToolExecutor] Registered tool: ${tool.name}`);
     }
 
     /**
@@ -67,19 +67,19 @@ export class ToolExecutor {
         }
 
         try {
-            console.log(`[ToolExecutor] Executing: ${toolCall.name}`);
-            console.log(`[ToolExecutor] Arguments:`, toolCall.arguments);
+            logger.info(`[ToolExecutor] Executing: ${toolCall.name}`);
+            logger.debug(`[ToolExecutor] Arguments:`, toolCall.arguments);
 
             const result = await tool.handler(toolCall.arguments, context);
-            log('tool result', result)
-            console.log(`[ToolExecutor] Result:`, result.success ? "✅" : "❌");
+            logger.debug('tool result', result)
+            logger.info(`[ToolExecutor] Result:`, result.success ? "✅" : "❌");
 
             return {
                 id: toolCall.id,
                 result
             };
         } catch (error: any) {
-            console.error(`[ToolExecutor] Error executing ${toolCall.name}:`, error);
+            logger.error(`[ToolExecutor] Error executing ${toolCall.name}:`, error);
             return {
                 id: toolCall.id,
                 result: {

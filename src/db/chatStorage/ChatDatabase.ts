@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import path from "path";
 import fs from "fs";
+import { logger } from "../../utils/logger";
 
 export interface ChatMessage {
     id?: number;
@@ -50,7 +51,7 @@ export class ChatDatabase {
         // Prepare statements
         this.prepareStatements();
 
-        console.log(`[ChatDatabase] Initialized: ${dbPath}`);
+        logger.info(`[ChatDatabase] Initialized: ${dbPath}`);
     }
 
     /**
@@ -145,13 +146,13 @@ export class ChatDatabase {
                 message.projectId,
                 message.screen,
                 message.role,
-                message.content,
+                typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
                 message.timestamp,
             );
 
             return result.lastInsertRowid as number;
         } catch (error) {
-            console.error("[ChatDatabase] Failed to save message:", error);
+            logger.error("[ChatDatabase] Failed to save message:", error);
             throw error;
         }
     }
@@ -175,7 +176,7 @@ export class ChatDatabase {
         try {
             transaction(messages);
         } catch (error) {
-            console.error("[ChatDatabase] Failed to save messages:", error);
+            logger.error("[ChatDatabase] Failed to save messages:", error);
             throw error;
         }
     }
@@ -188,7 +189,7 @@ export class ChatDatabase {
             const messages = this.selectByProjectScreenStmt.all(projectId, screen);
             return messages as ChatMessage[];
         } catch (error) {
-            console.error("[ChatDatabase] Failed to load messages:", error);
+            logger.error("[ChatDatabase] Failed to load messages:", error);
             return [];
         }
     }
@@ -201,7 +202,7 @@ export class ChatDatabase {
             const messages = this.selectByProjectStmt.all(projectId);
             return messages as ChatMessage[];
         } catch (error) {
-            console.error("[ChatDatabase] Failed to load all messages:", error);
+            logger.error("[ChatDatabase] Failed to load all messages:", error);
             return [];
         }
     }
@@ -214,7 +215,7 @@ export class ChatDatabase {
             const messages = this.selectAllStmt.all(limit);
             return messages as ChatMessage[];
         } catch (error) {
-            console.error("[ChatDatabase] Failed to get recent messages:", error);
+            logger.error("[ChatDatabase] Failed to get recent messages:", error);
             return [];
         }
     }
@@ -227,7 +228,7 @@ export class ChatDatabase {
             const result = this.deleteByProjectStmt.run(projectId);
             return result.changes;
         } catch (error) {
-            console.error("[ChatDatabase] Failed to delete messages:", error);
+            logger.error("[ChatDatabase] Failed to delete messages:", error);
             throw error;
         }
     }
@@ -240,7 +241,7 @@ export class ChatDatabase {
             const result = this.deleteByProjectScreenStmt.run(projectId, screen);
             return result.changes;
         } catch (error) {
-            console.error("[ChatDatabase] Failed to delete screen messages:", error);
+            logger.error("[ChatDatabase] Failed to delete screen messages:", error);
             throw error;
         }
     }
@@ -253,7 +254,7 @@ export class ChatDatabase {
             const result = this.countByProjectStmt.get(projectId) as { count: number };
             return result.count;
         } catch (error) {
-            console.error("[ChatDatabase] Failed to count messages:", error);
+            logger.error("[ChatDatabase] Failed to count messages:", error);
             return 0;
         }
     }
@@ -286,7 +287,7 @@ export class ChatDatabase {
                 projects: projects.count
             };
         } catch (error) {
-            console.error("[ChatDatabase] Failed to get stats:", error);
+            logger.error("[ChatDatabase] Failed to get stats:", error);
             return { totalMessages: 0, databaseSize: 0, projects: 0 };
         }
     }
@@ -298,9 +299,9 @@ export class ChatDatabase {
         try {
             this.db.run("VACUUM");
             this.db.run("ANALYZE");
-            console.log("[ChatDatabase] Database optimized");
+            logger.info("[ChatDatabase] Database optimized");
         } catch (error) {
-            console.error("[ChatDatabase] Failed to optimize:", error);
+            logger.error("[ChatDatabase] Failed to optimize:", error);
         }
     }
 
@@ -310,9 +311,9 @@ export class ChatDatabase {
     close(): void {
         try {
             this.db.close();
-            console.log("[ChatDatabase] Database closed");
+            logger.info("[ChatDatabase] Database closed");
         } catch (error) {
-            console.error("[ChatDatabase] Failed to close database:", error);
+            logger.error("[ChatDatabase] Failed to close database:", error);
         }
     }
 }

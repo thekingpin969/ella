@@ -1,4 +1,5 @@
 import { MongoClient, Db, Filter, Document, Sort, UpdateFilter, OptionalUnlessRequiredId } from "mongodb";
+import { logger } from "../../utils/logger";
 
 const mongoUser = process.env.MONGO_DB_USER
 const mongoPass = process.env.MONGO_DB_PASS
@@ -14,7 +15,7 @@ class Database {
         await client.connect();
         const mongoDb = client.db(mongodb);
         database = mongoDb;
-        console.log('mongoDB setup complete');
+        logger.info('mongoDB setup complete');
         return 'mongoDB setup complete';
     }
 
@@ -25,7 +26,7 @@ class Database {
             const result = await collection.updateMany(id, { $set: data }, { upsert: upsert });
             return result;
         } catch (error) {
-            console.error('Error updating log:', error);
+            logger.error('Error updating log:', error);
             throw error;
         }
     }
@@ -36,7 +37,7 @@ class Database {
             const data = await collection.find(query).sort(sort).skip(skip).limit(limit).toArray();
             return data ? { success: true, data } : { success: false, data: {} };
         } catch (error) {
-            console.error('Error getting logs:', error);
+            logger.error('Error getting logs:', error);
             throw error;
         }
     }

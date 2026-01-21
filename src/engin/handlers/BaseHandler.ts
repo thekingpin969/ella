@@ -1,5 +1,6 @@
 import { Context } from "../types/context";
 import { Event } from "../types/events";
+import { logger } from "../../utils/logger";
 
 export abstract class BaseHandler {
     /**
@@ -12,6 +13,6 @@ export abstract class BaseHandler {
      * Log with handler prefix
      */
     protected log(...message: any): void {
-        console.log(`[${this.constructor.name}] `, message);
+        logger.info(`[${this.constructor.name}] `, message);
     }
 }
