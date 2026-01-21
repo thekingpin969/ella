@@ -1,74 +1,105 @@
 # E.L.L.A API Server
 
-Infrastructure backend for the Even Logic Loves Automation system. Handles Project lifecycle management, artifact persistence, and real-time frontend communication.
+**E.L.L.A** (Even Logic Loves Automation) API Server is the intelligent backend powering the E.L.L.A system. It orchestrates project lifecycles, manages artifacts, and facilitates real-time communication between the AI logic and the frontend.
+
+Built for speed and modern standards using **Bun**, **Hono**, and **MongoDB**.
 
 ## 🛠 Tech Stack
 
-- **Runtime:** Bun
-- **Framework:** Hono
-- **Database:** SQLite (via better-sqlite3)
-- **Validation:** Zod
-- **Type Safety:** Strict TypeScript
+- **Runtime:** [Bun](httpss://bun.sh)
+- **Framework:** [Hono](httpss://hono.dev)
+- **Database:**
+    - [MongoDB](httpss://www.mongodb.com) (Primary data storage)
+    - [ChromaDB](httpss://www.trychroma.com) (Vector embedding storage for LLM context)
+- **Validation:** [Zod](httpss://zod.dev)
+- **WebSockets:** Native Bun WebSockets
+- **Key Libraries:** `googleapis`, `cheerio`
 
 ## 🚀 Setup & Run
 
-1. **Install Dependencies:**
+### Prerequisites
 
-   ```bash
-   bun install
-   ```
+- [Bun](httpss://bun.sh/docs/installation) (Latest version)
+- [MongoDB](httpss://www.mongodb.com/try/download/community)
+- ChromaDB (Ensure a ChromaDB instance is reachable if vector features are used)
 
-2. **Configuration:**
-   Copy `.env.example` to `.env` (Defaults work out of the box).
+### Installation
 
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+bun install
+```
 
-3. **Start Server:**
-   ```bash
-   bun start
-   # Or for development with watch mode:
-   bun dev
-   ```
+### Configuration
+
+Create a `.env` file in the root directory:
+
+```bash
+cp .env.example .env
+```
+
+Ensure your `.env` contains necessary configuration (adjust as needed):
+```env
+PORT=3000
+MONGODB_URI=mongodb://localhost:27017/ella
+# Add other keys required by internal modules (e.g., GOOGLE_APPLICATION_CREDENTIALS if used)
+```
+
+### Running the Server
+
+**Development Mode** (with hot recall):
+```bash
+bun dev
+```
+
+**Production Mode**:
+```bash
+bun start
+```
+
+The server listens on `http://localhost:3000` by default.
 
 ## 📡 API Endpoints
 
-| Method | Endpoint                            | Description                  |
-| ------ | ----------------------------------- | ---------------------------- |
-| POST   | `/api/projects`                     | Create a new project         |
-| GET    | `/api/projects/:id`                 | Get project status & details |
-| POST   | `/api/projects/:id/answers`         | Submit answers to questions  |
-| GET    | `/api/projects/:id/artifacts`       | List generated files         |
-| GET    | `/api/projects/:id/artifacts/:path` | Download file content        |
+### Projects
+- `POST /api/projects`: Create a new project.
+- `GET /api/projects`: List all projects.
+- `GET /api/projects/:id`: Get detailed status of a specific project.
+- `DELETE /api/projects/:id`: Remove a project.
+
+### Interactions
+- `POST /api/projects/:id/answers`: Submit answers to system questions.
+- `GET /api/projects/:id/artifacts`: Retrieve generated artifacts (files).
+- `GET /api/projects/:id/artifacts/:path`: Download a specific artifact.
 
 ## 🔌 WebSockets
 
-Connect to: `ws://localhost:3000/ws/projects/:projectId`
+Real-time updates are handled via WebSockets, allowing the frontend to receive immediate feedback on valid logic generation, questions, or errors.
 
-### Incoming Messages (Server -> Client)
+**URL:** `ws://localhost:3000/ws/projects/:projectId`
 
-All messages follow the format:
-
-```json
-{
-  "type": "update" | "question" | "artifact" | "error",
-  "timestamp": "2023-...",
-  "data": { ... }
-}
-```
+### Events (Server -> Client)
+Messages are JSON formatted with a `type`:
+- `update`: General status update or log.
+- `question`: The system requires user input.
+- `artifact`: A new file/artifact has been generated.
+- `error`: Something went wrong.
 
 ## 🧪 Testing
 
-Run the included manual test script:
-
-```bash
-chmod +x test.sh
-./test.sh
-```
-
-Or run unit tests:
+Run strict unit tests with:
 
 ```bash
 bun test
 ```
+
+## 📂 Project Structure
+
+- `src/db`: Database connection and schema handling.
+- `src/routes`: HTTP API route definitions.
+- `src/websocket`: WebSocket connection manager and event handling.
+- `src/utils`: Helper functions (logger, validators).
+- `src/services`: Core logic integration (if applicable).
+
+---
+
+*Powered by [Bun](httpss://bun.sh) & [Hono](httpss://hono.dev)*
