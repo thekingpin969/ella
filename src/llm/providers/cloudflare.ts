@@ -12,7 +12,7 @@ export class CloudflareProvider implements LLMProvider {
         this.apiKey = process.env.CLOUDFLARE_API_KEY || "";
         this.accountId = process.env.CLOUDFLARE_ACCOUNT_ID || "";
         // this.model = process.env.CLOUDFLARE_MODEL || "@cf/qwen/qwen3-30b-a3b-fp8";
-        this.model = "@cf/mistralai/mistral-small-3.1-24b-instruct";
+        this.model = "@cf/qwen/qwen3-30b-a3b-fp8";
 
         if (!this.apiKey) {
             throw new Error("CLOUDFLARE_API_KEY not found in environment");

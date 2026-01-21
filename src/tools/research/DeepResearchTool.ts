@@ -1,6 +1,12 @@
-import { LLMRequest } from "../../llm/types";
+// src/tools/research/DeepResearchTool.ts
+import { LLMRequest, Message } from "../../llm/types";
 import { llmService } from "../../llm";
 import { ResearchResult, ResearchReport, ReportSection, RiskItem, ArtifactInfo } from "./types";
+import * as cheerio from "cheerio";
+import { log } from "console";
+
+const SERPER_API_KEY = process.env.SERPER_API_KEY || "";
+const MAX_CONTENT_LENGTH = 5000;
 
 export interface DeepResearchOptions {
     depth?: "quick" | "moderate" | "comprehensive";
@@ -9,9 +15,53 @@ export interface DeepResearchOptions {
     riskAssessment?: boolean;
 }
 
+interface ToolDefinition {
+    type: "function";
+    name: string;
+    description: string;
+    parameters: {
+        type: "object";
+        properties: Record<string, any>;
+        required: string[];
+    };
+}
+
 export class DeepResearchTool {
     name = "deep_research";
     description = "Comprehensive multi-source research for complex topics";
+
+    private tools: ToolDefinition[] = [
+        {
+            type: "function",
+            name: "web_search",
+            description: "Search the web for information",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: {
+                        type: "string",
+                        description: "The search query",
+                    },
+                },
+                required: ["query"],
+            },
+        },
+        {
+            type: "function",
+            name: "fetch_webpage",
+            description: "Fetch full content from a specific webpage URL",
+            parameters: {
+                type: "object",
+                properties: {
+                    url: {
+                        type: "string",
+                        description: "The URL to fetch",
+                    },
+                },
+                required: ["url"],
+            },
+        },
+    ];
 
     /**
      * Execute deep research on a topic
@@ -31,39 +81,94 @@ export class DeepResearchTool {
             console.log(`[DeepResearch] Starting research on: "${topic}"`);
             console.log(`[DeepResearch] Depth: ${depth}`);
 
-            const researchPrompt = this.buildResearchPrompt(
-                topic,
-                focusAreas,
-                { depth, includeAlternatives, riskAssessment }
-            );
+            const maxIterations = this.getMaxIterations(depth);
+            const conversationHistory: Message[] = [];
 
-            const request: LLMRequest = {
-                messages: [
-                    {
-                        role: "user",
-                        content: researchPrompt
+            // Build initial prompt
+            const systemPrompt = this.buildSystemPrompt(topic, focusAreas, {
+                depth,
+                includeAlternatives,
+                riskAssessment
+            });
+
+            conversationHistory.push({
+                role: "user",
+                content: systemPrompt
+            });
+
+            let iteration = 0;
+            let researchComplete = false;
+            let toolCallsUsed = 0;
+
+            // Research loop
+            while (iteration < maxIterations && !researchComplete) {
+                iteration++;
+                console.log(`\n[DeepResearch] Iteration ${iteration}/${maxIterations}`);
+
+                const response = await llmService.chat({
+                    messages: conversationHistory,
+                    tools: this.tools as any,
+                    tool_choice: "auto",
+                    temperature: 0.4,
+                });
+
+                console.log("Response:", response);
+                // Check if research is complete
+                // @ts-ignore
+                if (response.finish_reason === "stop" || response.finish_reason === "end_turn") {
+                    researchComplete = true;
+                    break;
+                }
+
+                // Handle tool calls
+                if (response.tool_calls && response.tool_calls.length > 0) {
+                    conversationHistory.push({
+                        role: "assistant",
+                        content: response.content || "",
+                        tool_calls: response.tool_calls
+                    });
+
+                    const toolResults = [];
+
+                    for (const toolCall of response.tool_calls) {
+                        console.log(`[DeepResearch] Tool: ${toolCall.function.name}`);
+                        toolCallsUsed++;
+
+                        const result = await this.executeToolCall(toolCall);
+                        log(result)
+
+                        toolResults.push({
+                            role: "tool" as const,
+                            content: result,
+                            tool_call_id: toolCall.id,
+                            name: toolCall.function.name
+                        });
                     }
-                ],
-                tools: [
-                    {
-                        type: "web_search_20250305",
-                        name: "web_search"
-                    }
-                ],
-                temperature: 0.4,
-                // max_tokens: 16000
-            };
 
-            const response = await llmService.chat(request);
+                    conversationHistory.push(...toolResults);
+                    continue;
+                }
 
-            // Parse research report
-            const report = this.parseResearchReport(response, topic);
+                break;
+            }
+
+            // Get final report
+            conversationHistory.push({
+                role: "user",
+                content: "Provide your final comprehensive research report in a structured format."
+            });
+
+            const finalResponse = await llmService.chat({
+                messages: conversationHistory,
+                temperature: 0.3,
+            });
+
+            console.log("Final response:", finalResponse);
+            // Parse the research report
+            const report = this.parseResearchReport(finalResponse.content || "", topic);
 
             // Generate artifacts
             const artifacts = this.generateArtifacts(report);
-
-            // Count tool calls
-            const toolCallsUsed = response.tool_calls?.length || 20;
 
             console.log(`[DeepResearch] Research complete. ${toolCallsUsed} tool calls used`);
 
@@ -92,7 +197,26 @@ export class DeepResearchTool {
         }
     }
 
-    private buildResearchPrompt(
+    /**
+     * Get max iterations based on depth
+     */
+    private getMaxIterations(depth: string): number {
+        switch (depth) {
+            case "quick":
+                return 10;
+            case "moderate":
+                return 20;
+            case "comprehensive":
+                return 30;
+            default:
+                return 20;
+        }
+    }
+
+    /**
+     * Build system prompt for research
+     */
+    private buildSystemPrompt(
         topic: string,
         focusAreas: string[],
         options: any
@@ -134,32 +258,189 @@ export class DeepResearchTool {
         prompt += `- Number of sources consulted\n`;
         prompt += `- Specific actionable insights\n\n`;
 
-        prompt += `Output Format: Structured response with all sections clearly labeled.\n`;
+        prompt += `Begin your research now. Use web_search and fetch_webpage tools extensively.`;
 
         return prompt;
     }
 
     /**
-     * Parse research report from LLM response
+     * Execute a tool call
      */
-    private parseResearchReport(response: any, topic: string): ResearchReport {
-        const content = response.content || "";
+    private async executeToolCall(toolCall: any): Promise<string> {
+        const args = typeof toolCall.function.arguments === "string"
+            ? JSON.parse(toolCall.function.arguments)
+            : toolCall.function.arguments;
 
-        const report: ResearchReport = {
-            topic,
-            sections: this.extractSections(content),
-            summary: this.extractSummary(content),
-            totalSources: this.estimateSources(content),
-            confidence: this.calculateConfidence(content),
-            risks: this.extractRisks(content)
-        };
+        switch (toolCall.function.name) {
+            case "web_search":
+                return await this.handleWebSearch(args.query);
 
-        return report;
+            case "fetch_webpage":
+                return await this.handleFetchWebpage(args.url);
+
+            default:
+                return `Unknown function: ${toolCall.function.name}`;
+        }
     }
 
     /**
-     * Extract sections from response text
+     * Handle web search
      */
+    private async handleWebSearch(query: string): Promise<string> {
+        if (!SERPER_API_KEY) {
+            return JSON.stringify({ error: "SERPER_API_KEY not configured" });
+        }
+
+        try {
+            const response = await fetch("https://google.serper.dev/search", {
+                method: "POST",
+                headers: {
+                    "X-API-KEY": SERPER_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    q: query,
+                    num: 5,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Search API error: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            const results: any[] = [];
+
+            if (data.organic) {
+                for (const item of data.organic.slice(0, 5)) {
+                    // Fetch content for each result
+                    let content = item.snippet;
+                    try {
+                        content = await this.fetchAndExtract(item.link);
+                    } catch (e) {
+                        // Use snippet if fetch fails
+                    }
+
+                    results.push({
+                        title: item.title || "",
+                        url: item.link || "",
+                        snippet: item.snippet || "",
+                        content
+                    });
+                }
+            }
+
+            const res = JSON.stringify({
+                query,
+                resultsCount: results.length,
+                results
+            }, null, 2);
+
+            log(res)
+            return res;
+
+        } catch (error: any) {
+            return JSON.stringify({ error: error.message });
+        }
+    }
+
+    /**
+     * Handle fetch webpage
+     */
+    private async handleFetchWebpage(url: string): Promise<string> {
+        try {
+            const content = await this.fetchAndExtract(url);
+            return JSON.stringify({
+                url,
+                content,
+                timestamp: new Date().toISOString(),
+            }, null, 2);
+        } catch (error: any) {
+            return JSON.stringify({
+                url,
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Fetch and extract content from URL
+     */
+    private async fetchAndExtract(url: string): Promise<string> {
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+            signal: AbortSignal.timeout(10000),
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const html = await response.text();
+        const content = this.extractMainContent(html);
+        return this.truncateContent(content, MAX_CONTENT_LENGTH);
+    }
+
+    /**
+     * Extract main content from HTML
+     */
+    private extractMainContent(html: string): string {
+        const $ = cheerio.load(html);
+
+        $("script, style, nav, header, footer, aside, iframe, noscript").remove();
+        $(".advertisement, .ad, .sidebar, .comments").remove();
+
+        let content = "";
+        const mainSelectors = [
+            "article",
+            "main",
+            '[role="main"]',
+            ".content",
+            ".post-content",
+            "#content",
+        ];
+
+        for (const selector of mainSelectors) {
+            const element = $(selector);
+            if (element.length > 0) {
+                content = element.text();
+                break;
+            }
+        }
+
+        if (!content) {
+            content = $("body").text();
+        }
+
+        return content.replace(/\s+/g, " ").trim();
+    }
+
+    /**
+     * Truncate content
+     */
+    private truncateContent(content: string, maxLength: number): string {
+        if (content.length <= maxLength) {
+            return content;
+        }
+        return content.substring(0, maxLength) + "... [content truncated]";
+    }
+
+    /**
+     * Parse research report from text
+     */
+    private parseResearchReport(text: string, topic: string): ResearchReport {
+        return {
+            topic,
+            sections: this.extractSections(text),
+            summary: this.extractSummary(text),
+            totalSources: this.estimateSources(text),
+            confidence: this.calculateConfidence(text),
+            risks: this.extractRisks(text)
+        };
+    }
+
     private extractSections(text: string): ReportSection[] {
         const sections: ReportSection[] = [];
         const sectionTitles = [
@@ -193,27 +474,16 @@ export class DeepResearchTool {
         return sections;
     }
 
-    /**
-     * Extract summary
-     */
     private extractSummary(text: string): string {
         const lines = text.split('\n').filter(l => l.trim());
         return lines.slice(0, 3).join(' ').substring(0, 500);
     }
 
-    /**
-     * Estimate number of sources used
-     */
     private estimateSources(text: string): number {
-        // Rough estimate based on content length
         return Math.min(50, Math.floor(text.length / 500) + 10);
     }
 
-    /**
-     * Calculate overall confidence
-     */
     private calculateConfidence(text: string): number {
-        // Simple heuristic based on content quality indicators
         const hasMultipleSections = text.split('\n\n').length > 5;
         const hasDetails = text.length > 2000;
         const hasStructure = /\d+\./.test(text);
@@ -226,13 +496,9 @@ export class DeepResearchTool {
         return Math.min(95, confidence);
     }
 
-    /**
-     * Extract risks from text
-     */
     private extractRisks(text: string): RiskItem[] {
         const risks: RiskItem[] = [];
 
-        // Look for risk indicators
         const riskPatterns = [
             /limitation[s]?:?\s+([^\n]+)/gi,
             /risk[s]?:?\s+([^\n]+)/gi,
@@ -255,15 +521,23 @@ export class DeepResearchTool {
         return risks.slice(0, 5);
     }
 
-
     private generateArtifacts(report: ResearchReport): ArtifactInfo[] {
         const artifacts: ArtifactInfo[] = [];
 
-        // 1. Tool Capability Matrix
         artifacts.push({
             name: "tool-capability-matrix.yaml",
             type: "capability-matrix",
-            content: this.generateCapabilityMatrix(report)
+            content: {
+                tool: report.topic,
+                timestamp: new Date().toISOString(),
+                confidence: report.confidence,
+                totalSources: report.totalSources,
+                sections: report.sections.map(s => ({
+                    title: s.title,
+                    confidence: s.confidence,
+                    sources: s.sources
+                }))
+            }
         });
 
         artifacts.push({
@@ -283,23 +557,6 @@ export class DeepResearchTool {
         });
 
         return artifacts;
-    }
-
-    /**
-     * Generate capability matrix
-     */
-    private generateCapabilityMatrix(report: ResearchReport): any {
-        return {
-            tool: report.topic,
-            timestamp: new Date().toISOString(),
-            confidence: report.confidence,
-            totalSources: report.totalSources,
-            sections: report.sections.map(s => ({
-                title: s.title,
-                confidence: s.confidence,
-                sources: s.sources
-            }))
-        };
     }
 
     private generateImplementationGuide(report: ResearchReport): string {

@@ -1,6 +1,6 @@
-// src/llm/providers/openrouter.ts
 import { log } from "console";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
+import { normalizeTool } from "../utils";
 
 /**
  * OpenRouter Provider for E.L.L.A
@@ -107,14 +107,17 @@ export class OpenRouterProvider implements LLMProvider {
 
     private convertTools(tools: any[]): any[] {
         // OpenRouter uses OpenAI-compatible tool format
-        return tools.map(tool => ({
-            type: "function",
-            function: {
-                name: tool.function.name,
-                description: tool.function.description,
-                parameters: tool.function.parameters
-            }
-        }));
+        return tools.map(tool => {
+            const normalized = normalizeTool(tool);
+            return {
+                type: "function",
+                function: {
+                    name: normalized.name,
+                    description: normalized.description,
+                    parameters: normalized.parameters
+                }
+            };
+        });
     }
 
     private parseResponse(data: any): LLMResponse {

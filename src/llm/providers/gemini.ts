@@ -1,5 +1,6 @@
 // src/llm/providers/gemini.ts
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
+import { normalizeTool } from "../utils";
 
 export class GeminiProvider implements LLMProvider {
     name = "gemini";
@@ -9,7 +10,7 @@ export class GeminiProvider implements LLMProvider {
 
     constructor() {
         // this.apiKey = process.env.GEMINI_API_KEY || "AIzaSyAx5qpd9nuvMlCDFBlWzd2RirpSIglDU8Q";
-        this.apiKey = 'AIzaSyCTo4R_966L01hIP8a3q0MHLTfDvijpZ70';
+        this.apiKey = 'AIzaSyAWUtdw9QpUbWjxSyVCCOeoE8L_-Qn5Krc';
         // this.model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
         this.model = 'gemini-2.5-flash-lite';
 
@@ -126,11 +127,14 @@ export class GeminiProvider implements LLMProvider {
     }
 
     private convertTools(tools: any[]): any[] {
-        return tools.map(tool => ({
-            name: tool.function.name,
-            description: tool.function.description,
-            parameters: tool.function.parameters
-        }));
+        return tools.map(tool => {
+            const normalized = normalizeTool(tool);
+            return {
+                name: normalized.name,
+                description: normalized.description,
+                parameters: normalized.parameters
+            };
+        });
     }
 
     private parseResponse(data: any): LLMResponse {

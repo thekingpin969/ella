@@ -4,6 +4,7 @@ import { GeminiProvider } from "./providers/gemini";
 import { OpenRouterProvider } from "./providers/openrouter";
 import { CloudflareProvider } from "./providers/cloudflare";
 import { ClaudeProvider } from "./providers/claude";
+import { NvidiaProvider } from "./providers/nvidia";
 
 export class LLMService {
     private provider: ILLMProvider;
@@ -26,6 +27,9 @@ export class LLMService {
                 break;
             case "claude":
                 this.provider = new ClaudeProvider();
+                break;
+            case "nvidia":
+                this.provider = new NvidiaProvider();
                 break;
             // TODO: Add DeepSeek, Qwen, MiniMax
             default:

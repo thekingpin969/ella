@@ -1,4 +1,5 @@
 // src/tools/executor.ts
+import { log } from "console";
 import { Context } from "../engin/types/context";
 import { ToolCall, ToolResponse, ToolDefinition } from "./types";
 import { v4 as uuidv4 } from "uuid";
@@ -70,7 +71,7 @@ export class ToolExecutor {
             console.log(`[ToolExecutor] Arguments:`, toolCall.arguments);
 
             const result = await tool.handler(toolCall.arguments, context);
-
+            log('tool result', result)
             console.log(`[ToolExecutor] Result:`, result.success ? "✅" : "❌");
 
             return {

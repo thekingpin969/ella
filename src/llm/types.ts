@@ -1,6 +1,6 @@
-// src/llm/types.ts
+// src/llm/types.ts (UPDATED)
 
-export type LLMProviders = "gemini" | "openrouter" | "deepseek" | "qwen" | "minimax" | "claude";
+export type LLMProviders = "gemini" | "openrouter" | "deepseek" | "qwen" | "minimax" | "claude" | "cloudflare" | "nvidia"; // UPDATED
 
 export type MessageRole = "system" | "user" | "assistant" | "tool";
 
@@ -42,5 +42,5 @@ export interface LLMResponse {
 
 export interface LLMProvider {
     name: string;
-    chat(request: LLMRequest): Promise<LLMResponse>;
+    chat(request: LLMRequest, model?: string | null): Promise<LLMResponse>;
 }

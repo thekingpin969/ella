@@ -4,3 +4,4 @@ export { GeminiProvider } from "./providers/gemini";
 export { OpenRouterProvider } from "./providers/openrouter";
 export { CloudflareProvider } from "./providers/cloudflare";
 export { ClaudeProvider } from "./providers/claude";
+export { NvidiaProvider } from "./providers/nvidia";

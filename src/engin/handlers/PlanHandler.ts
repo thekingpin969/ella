@@ -227,7 +227,7 @@ export class PlanHandler extends BaseHandler {
                 ])
                 return this.parseGapFillingResult(finalResponse.content || "")
             }
-
+            this.log(response, "Gap filling response")
             // No tools used - parse direct response
             return this.parseGapFillingResult(response.content || "")
 

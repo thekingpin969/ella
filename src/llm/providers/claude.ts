@@ -1,6 +1,6 @@
-// src/llm/providers/claude.ts
 import { log } from "console";
 import { LLMProvider, LLMRequest, LLMResponse, Message, ToolCall } from "../types";
+import { normalizeTool } from "../utils";
 
 /**
  * Claude (Anthropic) Provider for E.L.L.A
@@ -23,6 +23,7 @@ export class ClaudeProvider implements LLMProvider {
     constructor() {
         this.apiKey = process.env.ANTHROPIC_API_KEY || "";
         // this.model = process.env.CLAUDE_MODEL || "claude-sonnet-4-5";
+        // this.model = "claude-sonnet-4-5";
         this.model = "gemini-3-pro-high";
 
         if (!this.apiKey) {
@@ -127,14 +128,13 @@ export class ClaudeProvider implements LLMProvider {
 
     private convertTools(tools: any[]): any[] {
         // Claude uses different tool format
-        // console.log(tools)
         return tools.map(tool => {
-            console.log(tool, 'cc')
+            const normalized = normalizeTool(tool);
             return {
-                name: tool.function.name,
-                description: tool.function.description,
-                input_schema: tool.function.parameters
-            }
+                name: normalized.name,
+                description: normalized.description,
+                input_schema: normalized.parameters
+            };
         });
     }
 
