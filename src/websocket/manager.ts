@@ -184,8 +184,31 @@ class WebSocketManager {
   }
 
 
+  public sendLog(projectId: string, message: string, data?: any) {
+    const projectConns = this.connections.get(projectId);
+    if (!projectConns) return; // Silent return for logs if no one is listening
+
+    const payload = {
+      type: "log",
+      timestamp: new Date().toISOString(),
+      data: {
+        message,
+        details: data
+      }
+    };
+
+    for (const ws of projectConns) {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify(payload));
+      }
+    }
+  }
+
   /**
-   * Shuts down the WebSocketManager and clears the heartbeat interval.
+   * Shuts down the WebSocketManager and cleared the heartbeat interval.
+   *
+   * @remarks
+   * This method clears the heartbeat interval.
    */
   public shutdown() {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);

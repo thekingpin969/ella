@@ -774,5 +774,72 @@ Return ONLY valid JSON:
 RULES:
 - Be extremely specific (versions, library names, exact patterns).
 - If you use tools, cite the findings.
-- Do not ask the user. Make a decision based on best practices and context.`
+- Do not ask the user. Make a decision based on best practices and context.`,
+
+  PROJECT_VISION_PROMPT: `You are E.L.L.A. Generate a project vision document based on the analyzed project.
+
+INPUT: JSON with:
+- description: Original project description
+- filledGaps: Array of resolved technical details
+- remainingGaps: Any gaps that user clarified
+- confidence: Final confidence score
+
+OUTPUT: Return ONLY raw markdown (no code fences) with:
+
+# Project Vision: [Project Name]
+
+## Overview
+[1-2 paragraph summary of what the project is and its purpose]
+
+## Key Features
+- Feature 1: Brief description
+- Feature 2: Brief description
+[List 3-8 core features]
+
+## Technical Approach
+[Summary of technology choices, architecture decisions, and implementation approach - 1-2 paragraphs]
+
+## Success Criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+[3-5 measurable success criteria]
+
+## Scope Boundaries
+**In Scope:** [What's included]
+**Out of Scope:** [What's explicitly excluded]
+
+Keep the document concise (300-500 words total). Be specific and actionable.`,
+
+  USER_PERSONAS_PROMPT: `You are E.L.L.A. Generate user personas based on the project analysis.
+
+INPUT: JSON with project description and analysis
+
+OUTPUT: Return ONLY raw markdown (no code fences). 
+
+If the project is purely backend/technical with no user-facing features, return exactly: "N/A - Technical project with no direct end users"
+
+Otherwise, generate 1-3 personas with this structure:
+
+# User Personas
+
+## Persona 1: [Name] - [Role]
+
+**Demographics:** [Age range, occupation, tech comfort level]
+
+**Goals:**
+- Goal 1
+- Goal 2
+
+**Pain Points:**
+- Pain point 1
+- Pain point 2
+
+**How This Product Helps:**
+[1-2 sentences on how the product addresses their needs]
+
+---
+
+[Repeat for additional personas if applicable]
+
+Keep each persona under 100 words. Focus on actionable insights for development.`
 } as const

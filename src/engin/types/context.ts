@@ -12,6 +12,8 @@ export interface PlanningData {
     confidence: number;
     initialDescription?: string;
     initialAnalysis?: any;
+    clarificationRound?: number;
+    askedQuestionIds?: string[];
 }
 
 export interface Context {

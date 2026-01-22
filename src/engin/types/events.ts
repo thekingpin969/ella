@@ -13,6 +13,8 @@ export type EventName =
     | "start_initial_analysis"
     | "planning_complete"
     | "user_response"
+    | "force_next_screen"
+    | "abort_planning"
 
     // Implementation stage
     | "story_complete"
