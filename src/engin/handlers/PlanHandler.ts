@@ -1,4 +1,4 @@
-// src/engin/handlers/PlanHandler.ts (ENHANCED)
+// src/engin/handlers/PlanHandler.ts
 import { BaseHandler } from "./BaseHandler";
 import { Context } from "../types/context";
 import { Event } from "../types/events";
@@ -12,6 +12,7 @@ export class PlanHandler extends BaseHandler {
 
     handle(context: Context, event: Event): void {
         this.log(`Handling event: ${event.name}`);
+        wsManager.sendLog(context.projectId, `Handling event: ${event.name}`, { event });
 
         switch (event.name) {
             case "context_created":
@@ -26,6 +27,37 @@ export class PlanHandler extends BaseHandler {
             case "screen_complete":
                 this.onScreenComplete(context, event);
                 break;
+        }
+    }
+
+    /**
+     * Helper: specific wrapper for LLM calls to ensure they are logged to WS
+     */
+    private async callLLMWithLogging(
+        context: Context,
+        stepName: string,
+        messages: any[],
+        options: any = {}
+    ): Promise<any> {
+        wsManager.sendLog(context.projectId, `🤖 LLM Request: ${stepName}`, { messages, options });
+
+        const startTime = Date.now();
+        try {
+            const response = await llmService.chat({
+                messages,
+                ...options
+            });
+            const duration = Date.now() - startTime;
+
+            wsManager.sendLog(context.projectId, `🤖 LLM Response: ${stepName} (${duration}ms)`, {
+                content: response.content,
+                tool_calls: response.tool_calls
+            });
+
+            return response;
+        } catch (error: any) {
+            wsManager.sendLog(context.projectId, `❌ LLM Error: ${stepName}`, { error: error.message });
+            throw error;
         }
     }
 
@@ -49,11 +81,14 @@ export class PlanHandler extends BaseHandler {
         this.log(`Answers: ${answers}`);
         const { confidence } = await this.updateContext(context, answers)
         this.log(`Updated context: ${confidence}`);
+        wsManager.sendLog(context.projectId, `Confidence updated based on answers`, { confidence });
         if (confidence < 95) {
             this.log('confidence is low, trying to increase confidence')
+            wsManager.sendLog(context.projectId, 'Confidence is low (< 95%), initiating autonomous gap filling...');
             await this.increaceConfidence(context, event)
         } else {
             this.log('have enough confidence to move to the next step')
+            wsManager.sendLog(context.projectId, 'Confidence is sufficient. Moving to next step.');
         }
     }
 
@@ -69,6 +104,7 @@ export class PlanHandler extends BaseHandler {
      */
     private async increaceConfidence(context: Context, event: Event): Promise<void> {
         this.log('Starting autonomous gap-filling process...')
+        wsManager.sendLog(context.projectId, 'Starting autonomous gap-filling process...');
 
         // Step 1: Load current state from session memory
         const initialAnalysisStr = memoryService.getSession(context.projectId, 'initial_analysis')
@@ -79,6 +115,7 @@ export class PlanHandler extends BaseHandler {
 
         const initialAnalysis = JSON.parse(initialAnalysisStr.content)
         const { description, gaps, confidence: currentConfidence } = initialAnalysis
+        wsManager.sendLog(context.projectId, `Loaded initial analysis. Current confidence: ${currentConfidence}%`, { gaps });
 
         // Step 2: Ask E.L.L.A to research and fill gaps autonomously
         wsManager.sendFiller(context.projectId, 'analyzing gaps and conducting research...')
@@ -145,13 +182,23 @@ export class PlanHandler extends BaseHandler {
     }> {
         try {
             this.log(`Starting gap filling for ${gaps.length} gaps...`);
+            wsManager.sendLog(context.projectId, `Starting research for ${gaps.length} gaps...`, { gaps });
 
             // Step 1: Identify which gaps are fillable vs unfillable
-            const { fillable, unfillable } = await this.identifyFillableGaps(description, gaps);
+            wsManager.sendFiller(context.projectId, "Classifying gaps...");
+            const { fillable, unfillable } = await this.identifyFillableGaps(context, description, gaps);
 
             this.log(`Identified ${fillable.length} fillable gaps and ${unfillable.length} unfillable gaps.`);
+            wsManager.sendLog(context.projectId, `Gap classification complete.`, {
+                fillableCount: fillable.length,
+                unfillableCount: unfillable.length,
+                fillable,
+                unfillable
+            });
 
             // Step 2: "Manually hard coded" parallel execution for fillable gaps
+            wsManager.sendFiller(context.projectId, `Reasoning about ${fillable.length} technical gaps...`);
+
             const filledResults = await Promise.all(
                 fillable.map(async (gapItem) => {
                     return this.fillGap(context, description, gapItem.gap);
@@ -179,13 +226,15 @@ export class PlanHandler extends BaseHandler {
     /**
      * NEW: Classify gaps into fillable (technical) and unfillable (business)
      */
-    private async identifyFillableGaps(description: string, gaps: string[]): Promise<{
+    private async identifyFillableGaps(context: Context, description: string, gaps: string[]): Promise<{
         fillable: Array<{ gap: string, reason: string }>,
         unfillable: Array<{ gap: string, reason: string }>
     }> {
         try {
-            const response = await llmService.chat({
-                messages: [
+            const response = await this.callLLMWithLogging(
+                context,
+                "Gap Classification",
+                [
                     {
                         role: "system",
                         content: PROMPTS.GAP_CLASSIFICATION_PROMPT
@@ -195,9 +244,11 @@ export class PlanHandler extends BaseHandler {
                         content: JSON.stringify({ description, gaps })
                     }
                 ],
-                temperature: 0.1, // Low temp for classification
-                max_tokens: 4000
-            });
+                {
+                    temperature: 0.1, // Low temp for classification
+                    max_tokens: 4000
+                }
+            );
 
             const parsed = this.parseJSONResponse(response.content || "{}");
             return {
@@ -221,9 +272,15 @@ export class PlanHandler extends BaseHandler {
     }> {
         try {
             this.log(`Filling gap: ${gap}`);
+            wsManager.sendLog(context.projectId, `Researching gap: ${gap}...`);
 
-            const response = await llmService.chat({
-                messages: [
+            // Helper filler for this specific gap? might be too noisy if parallel. 
+            // wsManager.sendFiller(context.projectId, `Researching: ${gap.substring(0, 30)}...`);
+
+            const response = await this.callLLMWithLogging(
+                context,
+                `Research Gap: ${gap}`,
+                [
                     {
                         role: "system",
                         content: PROMPTS.SINGLE_GAP_FILLING_PROMPT
@@ -231,24 +288,32 @@ export class PlanHandler extends BaseHandler {
                             .replace("{{DESCRIPTION}}", description)
                     }
                 ],
-                // Provide tools so it can research
-                tools: toolExecutor.getToolDefinitions(),
-                tool_choice: "auto",
-                temperature: 0.4,
-                max_tokens: 4000
-            });
+                {
+                    // Provide tools so it can research
+                    tools: toolExecutor.getToolDefinitions(),
+                    tool_choice: "auto",
+                    temperature: 0.4,
+                    max_tokens: 4000
+                }
+            );
 
             // Handle tool calls if E.L.L.A decided to research
             if (response.tool_calls && response.tool_calls.length > 0) {
                 // Execute tools
+                wsManager.sendLog(context.projectId, `Executing tools for gap: ${gap}`, { tool_calls: response.tool_calls });
+
                 const toolCalls = toolExecutor.parseToolCalls(response);
                 const toolResults = await toolExecutor.executeTools(toolCalls, context);
 
                 // Get final response
                 const toolMessages = toolExecutor.formatToolResponses(toolResults);
 
-                const finalResponse = await llmService.chat({
-                    messages: [
+                wsManager.sendLog(context.projectId, `Tool results for gap: ${gap}`, { toolResults });
+
+                const finalResponse = await this.callLLMWithLogging(
+                    context,
+                    `Research Gap (Post-Tool): ${gap}`,
+                    [
                         {
                             role: "system",
                             content: PROMPTS.SINGLE_GAP_FILLING_PROMPT
@@ -267,10 +332,12 @@ export class PlanHandler extends BaseHandler {
                             name: tm.name
                         }))
                     ],
-                    temperature: 0.4
-                });
+                    { temperature: 0.4 }
+                );
 
                 const parsed = this.parseJSONResponse(finalResponse.content || "{}");
+                wsManager.sendLog(context.projectId, `Gap resolved (with tools)`, { gap, resolution: parsed.resolution });
+
                 return {
                     gap,
                     resolution: parsed.resolution || "Could not resolve",
@@ -280,6 +347,8 @@ export class PlanHandler extends BaseHandler {
 
             // Direct response
             const parsed = this.parseJSONResponse(response.content || "{}");
+            wsManager.sendLog(context.projectId, `Gap resolved (direct)`, { gap, resolution: parsed.resolution });
+
             return {
                 gap,
                 resolution: parsed.resolution || "Could not resolve",
@@ -311,8 +380,12 @@ export class PlanHandler extends BaseHandler {
         remainingGaps: string[]
     }> {
         try {
-            const response = await llmService.chat({
-                messages: [
+            wsManager.sendFiller(context.projectId, "Recalculating confidence metrics...");
+
+            const response = await this.callLLMWithLogging(
+                context,
+                "Recalculate Confidence",
+                [
                     {
                         role: "system",
                         content: PROMPTS.CONFIDENCE_SYSTEM_PROMPT
@@ -327,9 +400,11 @@ export class PlanHandler extends BaseHandler {
                         })
                     }
                 ],
-                temperature: 0.3,
-                max_tokens: 10000
-            })
+                {
+                    temperature: 0.3,
+                    max_tokens: 10000
+                }
+            );
 
             const parsed = this.parseJSONResponse(response.content || "{}")
 
@@ -416,7 +491,8 @@ export class PlanHandler extends BaseHandler {
     }
 
     private async handleUserMessage(context: Context, userMessage: string): Promise<void> {
-        this.log('message recived..., handling it')
+        this.log('message received..., handling it')
+        wsManager.sendLog(context.projectId, 'Processing user message...');
         wsManager.sendMessage(context.projectId, { message: 'ok i will wait...' })
     }
 
@@ -428,15 +504,18 @@ export class PlanHandler extends BaseHandler {
 
         try {
             // Step 1: Get analysis and gaps
-            const analysis = await this.createInitialContext(description);
+            const analysis = await this.createInitialContext(context, description);
             this.log(analysis)
+            wsManager.sendLog(context.projectId, 'Initial analysis generated', { analysis });
 
             // Step 2: Calculate confidence
             const { confidence, reasoning } = await this.calculateConfidence(
+                context,
                 description,
                 analysis.gaps
             );
             this.log(confidence, reasoning)
+            wsManager.sendLog(context.projectId, `Initial confidence calculated: ${confidence}%`, { reasoning });
 
             // Step 3: Store in context
             context.planningData!.confidence = confidence;
@@ -472,13 +551,15 @@ export class PlanHandler extends BaseHandler {
         }
     }
 
-    private async createInitialContext(description: string): Promise<{
+    private async createInitialContext(context: Context, description: string): Promise<{
         gaps: string[];
         message: string;
     }> {
         try {
-            const response = await llmService.chat({
-                messages: [
+            const response = await this.callLLMWithLogging(
+                context,
+                "Initial Analysis",
+                [
                     {
                         role: "system",
                         content: PROMPTS.ANALYSIS_SYSTEM_PROMPT
@@ -488,9 +569,11 @@ export class PlanHandler extends BaseHandler {
                         content: description
                     }
                 ],
-                temperature: 0.7,
-                max_tokens: 10000
-            });
+                {
+                    temperature: 0.7,
+                    max_tokens: 10000
+                }
+            );
 
             if (!response.content) {
                 throw new Error("Empty response from LLM");
@@ -520,12 +603,15 @@ export class PlanHandler extends BaseHandler {
     }
 
     private async calculateConfidence(
+        context: Context,
         description: string,
         gaps: string[]
     ): Promise<{ confidence: number; reasoning: string }> {
         try {
-            const response = await llmService.chat({
-                messages: [
+            const response = await this.callLLMWithLogging(
+                context,
+                "Calculate Confidence",
+                [
                     {
                         role: "system",
                         content: PROMPTS.CONFIDENCE_SYSTEM_PROMPT
@@ -538,9 +624,11 @@ export class PlanHandler extends BaseHandler {
                         })
                     }
                 ],
-                temperature: 0.3,
-                max_tokens: 10000
-            });
+                {
+                    temperature: 0.3,
+                    max_tokens: 10000
+                }
+            );
 
             if (!response.content) {
                 throw new Error("Empty response from LLM");
