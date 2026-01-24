@@ -7,6 +7,7 @@ import { memoryService } from "../../../memory";
 import { PROMPTS } from "../../prompts/prompts";
 import { callLLMWithLogging, parseJSONResponse, log } from "./utils";
 import { AnalysisResult, ConfidenceResult } from "./types";
+import { getCachedStage, setCachedStage, CacheKey, isStageCachingEnabled } from "./stageCache";
 
 /**
  * Perform initial analysis of project description
@@ -74,6 +75,14 @@ export async function createInitialContext(
     context: Context,
     description: string
 ): Promise<AnalysisResult> {
+    // Check cache first
+    const cached = getCachedStage<AnalysisResult>(context, CacheKey.GAPS_GENERATED);
+    if (cached) {
+        log(`🚀 Using cached gaps (${cached.gaps.length} gaps)`);
+        wsManager.sendLog(context.projectId, '⚡ Loaded gaps from cache', { gaps: cached.gaps });
+        return cached;
+    }
+
     try {
         const response = await callLLMWithLogging(
             context.projectId,
@@ -98,10 +107,15 @@ export async function createInitialContext(
             throw new Error("Invalid response format: missing message");
         }
 
-        return {
+        const result: AnalysisResult = {
             gaps: parsed.gaps,
             message: parsed.message
         };
+
+        // Cache the result
+        setCachedStage(context, CacheKey.GAPS_GENERATED, result);
+
+        return result;
 
     } catch (error: any) {
         log(`Error in createInitialContext: ${error.message}`);
@@ -120,6 +134,14 @@ export async function calculateConfidence(
     description: string,
     gaps: string[]
 ): Promise<ConfidenceResult> {
+    // Check cache first
+    const cached = getCachedStage<ConfidenceResult>(context, CacheKey.CONFIDENCE_CALCULATED);
+    if (cached) {
+        log(`🚀 Using cached confidence: ${cached.confidence}%`);
+        wsManager.sendLog(context.projectId, '⚡ Loaded confidence from cache', { confidence: cached.confidence });
+        return cached;
+    }
+
     try {
         const response = await callLLMWithLogging(
             context.projectId,
@@ -150,10 +172,15 @@ export async function calculateConfidence(
             throw new Error("Invalid response: confidence must be between 0-100");
         }
 
-        return {
+        const result: ConfidenceResult = {
             confidence: parsed.confidence,
             reasoning: parsed.reasoning || "No reasoning provided"
         };
+
+        // Cache the result
+        setCachedStage(context, CacheKey.CONFIDENCE_CALCULATED, result);
+
+        return result;
 
     } catch (error: any) {
         log(`Error in calculateConfidence: ${error.message}`);

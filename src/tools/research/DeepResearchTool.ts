@@ -267,19 +267,28 @@ export class DeepResearchTool {
      * Execute a tool call
      */
     private async executeToolCall(toolCall: any): Promise<string> {
-        const args = typeof toolCall.function.arguments === "string"
-            ? JSON.parse(toolCall.function.arguments)
-            : toolCall.function.arguments;
+        try {
+            const args = typeof toolCall.function.arguments === "string"
+                ? JSON.parse(toolCall.function.arguments)
+                : toolCall.function.arguments;
 
-        switch (toolCall.function.name) {
-            case "web_search":
-                return await this.handleWebSearch(args.query);
+            switch (toolCall.function.name) {
+                case "web_search":
+                    return await this.handleWebSearch(args.query);
 
-            case "fetch_webpage":
-                return await this.handleFetchWebpage(args.url);
+                case "fetch_webpage":
+                    return await this.handleFetchWebpage(args.url);
 
-            default:
-                return `Unknown function: ${toolCall.function.name}`;
+                default:
+                    return `Unknown function: ${toolCall.function.name}`;
+            }
+        } catch (error: any) {
+            logger.error(`[DeepResearch] Error parsing tool call arguments:`, error);
+            logger.error(`[DeepResearch] Raw arguments:`, toolCall.function.arguments);
+            return JSON.stringify({
+                error: `Failed to execute tool call: ${error.message}`,
+                toolName: toolCall.function.name
+            });
         }
     }
 

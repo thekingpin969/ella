@@ -60,7 +60,8 @@ export async function askClarifyingQuestions(
     const questions = newGaps.map((gap, index) => ({
         id: `gap_${index}_${timestamp}`,
         text: gapToQuestion(gap),
-        type: "text" as const
+        type: "text" as const,
+        options: generateOptionsForGap(gap) // Add suggested options for common questions
     }));
 
     // Store asked questions to prevent re-asking
@@ -88,6 +89,51 @@ export async function askClarifyingQuestions(
 export function gapToQuestion(gap: string): string {
     return gap.replace(/unclear|not specified|undefined|missing/gi, '')
         .trim() + '?';
+}
+
+/**
+ * Generate smart options for common question types
+ */
+function generateOptionsForGap(gap: string): string[] | undefined {
+    const lowerGap = gap.toLowerCase();
+
+    // Authentication-related questions
+    if (lowerGap.includes('auth') || lowerGap.includes('login') || lowerGap.includes('sign in')) {
+        return ['OAuth 2.0', 'JWT', 'Session-based', 'Custom'];
+    }
+
+    // Database-related questions
+    if (lowerGap.includes('database') || lowerGap.includes('storage') || lowerGap.includes('data store')) {
+        return ['PostgreSQL', 'MongoDB', 'MySQL', 'Firebase'];
+    }
+
+    // UI framework questions
+    if (lowerGap.includes('frontend') || lowerGap.includes('ui framework') || lowerGap.includes('client')) {
+        return ['React', 'Vue', 'Angular', 'Svelte'];
+    }
+
+    // Backend framework questions
+    if (lowerGap.includes('backend') || lowerGap.includes('server') || lowerGap.includes('api')) {
+        return ['Express', 'FastAPI', 'Django', 'Spring Boot'];
+    }
+
+    // Deployment/hosting questions
+    if (lowerGap.includes('deploy') || lowerGap.includes('host') || lowerGap.includes('cloud')) {
+        return ['AWS', 'Google Cloud', 'Azure', 'Vercel'];
+    }
+
+    // Payment-related questions
+    if (lowerGap.includes('payment') || lowerGap.includes('billing') || lowerGap.includes('subscription')) {
+        return ['Stripe', 'PayPal', 'Square', 'Custom'];
+    }
+
+    // Mobile platform questions
+    if (lowerGap.includes('mobile') || lowerGap.includes('platform')) {
+        return ['iOS', 'Android', 'Both', 'Web-only'];
+    }
+
+    // No specific options - let user type freely
+    return undefined;
 }
 
 /**

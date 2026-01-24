@@ -6,6 +6,7 @@ import { logger as honoLogger } from "hono/logger";
 import { logger } from "./src/utils/logger";
 import { cors } from "hono/cors";
 import projectRoutes from "./src/routes/projects";
+import cacheRoutes from "./src/routes/cache";
 import { wsManager } from "./src/websocket/manager";
 import { chatDB } from './src/db/chatStorage';
 import { stageEngine } from './src/engin';
@@ -24,6 +25,7 @@ app.use("*", cors());
 
 // Routes
 app.route("/api/projects", projectRoutes);
+app.route("/api/cache", cacheRoutes);
 
 // WebSocket Endpoint
 app.get(
@@ -38,12 +40,24 @@ app.get(
         const prevMsg: any = chatDB.loadMessages(projectId, 1)
         // log(prevMsg)
         for (const msg of prevMsg) {
+          // Parse content if it's a JSON string (e.g., for questions)
+          let content = msg.content;
+          if (typeof content === 'string' && (msg.type === 'questions' || content.startsWith('{'))) {
+            try {
+              content = JSON.parse(content);
+            } catch (e) {
+              // Keep as string if parsing fails
+            }
+          }
+
           wsManager.broadcast(projectId, {
-            type: 'message', data: {
+            type: msg.type || 'message', // Use the stored type from DB
+            data: {
               role: msg.role,
-              content: msg.content,
+              content: content,
               confidence: 0
-            }, timestamp: msg.timestamp
+            },
+            timestamp: msg.timestamp
           })
         }
       },

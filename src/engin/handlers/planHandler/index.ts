@@ -161,6 +161,7 @@ export class PlanHandler extends BaseHandler {
             timestamp: new Date().toISOString()
         }));
 
+        log('passed')
         // Check if we still need user input
         if (updatedConfidence.confidence >= CONFIDENCE_THRESHOLD - 5) { // 90% threshold for research
             wsManager.sendMessage(context.projectId, {

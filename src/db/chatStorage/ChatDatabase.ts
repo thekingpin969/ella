@@ -65,6 +65,7 @@ export class ChatDatabase {
         screen INTEGER NOT NULL,
         role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
         content TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'message',
         timestamp TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -93,13 +94,13 @@ export class ChatDatabase {
     private prepareStatements(): void {
         // Insert message
         this.insertStmt = this.db.prepare(`
-      INSERT INTO messages (project_id, screen, role, content, timestamp)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO messages (project_id, screen, role, content, type, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
         // Select by project and screen
         this.selectByProjectScreenStmt = this.db.prepare(`
-      SELECT id, project_id as projectId, screen, role, content, timestamp
+      SELECT id, project_id as projectId, screen, role, content, type, timestamp
       FROM messages
       WHERE project_id = ? AND screen = ?
       ORDER BY timestamp ASC
@@ -107,7 +108,7 @@ export class ChatDatabase {
 
         // Select all messages for a project
         this.selectByProjectStmt = this.db.prepare(`
-      SELECT id, project_id as projectId, screen, role, content, timestamp
+      SELECT id, project_id as projectId, screen, role, content, type, timestamp
       FROM messages
       WHERE project_id = ?
       ORDER BY screen ASC, timestamp ASC
@@ -115,7 +116,7 @@ export class ChatDatabase {
 
         // Select all messages (for debugging/admin)
         this.selectAllStmt = this.db.prepare(`
-      SELECT id, project_id as projectId, screen, role, content, timestamp
+      SELECT id, project_id as projectId, screen, role, content, type, timestamp
       FROM messages
       ORDER BY timestamp DESC
       LIMIT ?
@@ -147,6 +148,7 @@ export class ChatDatabase {
                 message.screen,
                 message.role,
                 typeof message.content === 'string' ? message.content : JSON.stringify(message.content),
+                message.type || 'message',
                 message.timestamp,
             );
 
@@ -168,6 +170,7 @@ export class ChatDatabase {
                     msg.screen,
                     msg.role,
                     msg.content,
+                    msg.type || 'message',
                     msg.timestamp,
                 );
             }

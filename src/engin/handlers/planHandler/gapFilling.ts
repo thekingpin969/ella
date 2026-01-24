@@ -8,6 +8,7 @@ import { PROMPTS } from "../../prompts/prompts";
 import { toolExecutor } from "../../../tools";
 import { callLLMWithLogging, parseJSONResponse, log } from "./utils";
 import { GapFillingResult, GapClassification, FilledGap, RecalculatedConfidence } from "./types";
+import { getCachedStage, setCachedStage, CacheKey } from "./stageCache";
 
 /**
  * Conduct gap filling research autonomously
@@ -17,6 +18,14 @@ export async function conductGapFillingResearch(
     description: string,
     gaps: string[]
 ): Promise<GapFillingResult> {
+    // Check cache first
+    const cached = getCachedStage<GapFillingResult>(context, CacheKey.GAPS_FILLED);
+    if (cached) {
+        log(`🚀 Using cached gap filling results (${cached.filledGaps.length} filled, ${cached.unfillableGaps.length} unfillable)`);
+        wsManager.sendLog(context.projectId, '⚡ Loaded gap filling from cache', { cached });
+        return cached;
+    }
+
     try {
         log(`Starting gap filling for ${gaps.length} gaps...`);
         wsManager.sendLog(context.projectId, `Starting research for ${gaps.length} gaps...`, { gaps });
@@ -42,10 +51,15 @@ export async function conductGapFillingResearch(
             })
         );
 
-        return {
+        const result: GapFillingResult = {
             filledGaps: filledResults,
             unfillableGaps: unfillable.map(u => u.gap)
         };
+
+        // Cache the result
+        setCachedStage(context, CacheKey.GAPS_FILLED, result);
+
+        return result;
 
     } catch (error: any) {
         log(`Error in gap filling research: ${error.message}`);
@@ -194,6 +208,14 @@ export async function recalculateConfidence(
     originalGaps: string[],
     gapFillingResult: GapFillingResult
 ): Promise<RecalculatedConfidence> {
+    // Check cache first
+    const cached = getCachedStage<RecalculatedConfidence>(context, CacheKey.CONFIDENCE_RECALCULATED);
+    if (cached) {
+        log(`🚀 Using cached recalculated confidence: ${cached.confidence}%`);
+        wsManager.sendLog(context.projectId, '⚡ Loaded recalculated confidence from cache', { confidence: cached.confidence });
+        return cached;
+    }
+
     try {
         wsManager.sendFiller(context.projectId, "Recalculating confidence metrics...");
 
@@ -217,11 +239,16 @@ export async function recalculateConfidence(
 
         const parsed = parseJSONResponse(response.content || "{}");
 
-        return {
+        const result: RecalculatedConfidence = {
             confidence: parsed.confidence || 50,
             reasoning: parsed.reasoning || "Confidence updated with research",
             remainingGaps: gapFillingResult.unfillableGaps
         };
+
+        // Cache the result
+        setCachedStage(context, CacheKey.CONFIDENCE_RECALCULATED, result);
+
+        return result;
 
     } catch (error: any) {
         log(`Error recalculating confidence: ${error.message}`);

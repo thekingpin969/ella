@@ -1,0 +1,49 @@
+{
+    "cache:gaps_generated": {
+        "data": {
+            "gaps": [
+                "Authentication method not specified",
+                "Database choice unclear",
+                "Payment integration details missing"
+            ],
+            "message": "I've analyzed your project description and identified 3 gaps that need clarification."
+        },
+        "timestamp": "2026-01-24T15:20:00.000Z",
+        "cachedAt": 1706098800000
+    },
+    "cache:confidence_calculated": {
+        "data": {
+            "confidence": 75,
+            "reasoning": "Good understanding of core features and user flow. Some technical implementation details need clarification."
+        },
+        "timestamp": "2026-01-24T15:20:15.000Z",
+        "cachedAt": 1706098815000
+    },
+    "cache:gaps_filled": {
+        "data": {
+            "filledGaps": [
+                {
+                    "gap": "Authentication method not specified",
+                    "resolution": "Research suggests JWT-based authentication with OAuth 2.0 providers (Google, GitHub) is industry standard for modern web apps",
+                    "source": "research"
+                }
+            ],
+            "unfillableGaps": [
+                "Payment integration details missing"
+            ]
+        },
+        "timestamp": "2026-01-24T15:21:30.000Z",
+        "cachedAt": 1706098890000
+    },
+    "cache:confidence_recalculated": {
+        "data": {
+            "confidence": 85,
+            "reasoning": "Technical gaps filled through research. Only business decision (payment provider choice) remains.",
+            "remainingGaps": [
+                "Payment integration details missing"
+            ]
+        },
+        "timestamp": "2026-01-24T15:22:00.000Z",
+        "cachedAt": 1706098920000
+    }
+}

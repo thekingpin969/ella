@@ -29,4 +29,9 @@ token.json
 src/db/chatStorage/data/*
 websocket-test-client.html
 
+# Stage caching (dev/testing only)
+.stage-cache/*.json
+!.stage-cache/example-project.json
+!.stage-cache/README.md
+
 docs
