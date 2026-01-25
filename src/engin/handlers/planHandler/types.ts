@@ -3,7 +3,7 @@
 
 import { Context } from "../../types/context";
 
-// Result types
+// Core result types
 export interface ValidationResult {
     valid: boolean;
     message: string;
@@ -17,11 +17,6 @@ export interface AnalysisResult {
 export interface ConfidenceResult {
     confidence: number;
     reasoning: string;
-}
-
-export interface ProcessedAnswersResult {
-    confidence: number;
-    filledGaps: string[];
 }
 
 export interface GapFillingResult {
@@ -52,5 +47,6 @@ export interface Artifact {
 }
 
 // Constants
-export const MAX_CLARIFICATION_ROUNDS = 3;
-export const CONFIDENCE_THRESHOLD = 95;
+export const MAX_CLARIFICATION_ROUNDS = 5; // Increased - no arbitrary limits now
+export const CONFIDENCE_THRESHOLD = 95; // Target confidence for PRD generation
+

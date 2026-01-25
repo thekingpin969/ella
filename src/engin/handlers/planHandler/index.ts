@@ -21,6 +21,8 @@ import {
     handleMaxRoundsReached
 } from "./clarification";
 import { handleUserOverride, handleAbort, handleUserMessage } from "./edgeCases";
+import { updateProjectUnderstanding } from "./projectUnderstanding";
+import { generatePRD } from "./prdGenerator";
 
 export class PlanHandler extends BaseHandler {
 
@@ -74,12 +76,12 @@ export class PlanHandler extends BaseHandler {
         await performInitialAnalysis(
             context,
             event.payload.description,
-            (ctx) => this.increaseConfidence(ctx, event)
+            (ctx) => this.enrichProject(ctx, event)
         );
     }
 
     private onUserResponse(context: Context, event: Event): void {
-        switch (event.name!) {
+        switch (event.type!) {
             case "answers_received":
                 this.onAnswerReceived(context, event);
                 break;
@@ -87,7 +89,7 @@ export class PlanHandler extends BaseHandler {
                 this.onWebSocketMessage(context, event);
                 break;
             default:
-                log(`Unknown event: ${event.name}`);
+                log(`Unknown event: ${event.type}`);
                 break;
         }
     }
@@ -98,7 +100,7 @@ export class PlanHandler extends BaseHandler {
             getClarificationRound: (ctx) => getClarificationRound(ctx),
             completeScreen1: (ctx) => this.completeScreen1(ctx),
             handleMaxRoundsReached: (ctx, conf) => handleMaxRoundsReached(ctx, conf),
-            increaseConfidence: (ctx, ev) => this.increaseConfidence(ctx, ev)
+            increaseConfidence: (ctx, ev) => this.enrichProject(ctx, ev)
         });
     }
 
@@ -116,12 +118,16 @@ export class PlanHandler extends BaseHandler {
     }
 
     // ==========================================
-    // CONFIDENCE FLOW
+    // ENRICHMENT FLOW (replaces old confidence flow)
     // ==========================================
 
-    private async increaseConfidence(context: Context, event: Event): Promise<void> {
-        log('Starting autonomous gap-filling process...');
-        wsManager.sendLog(context.projectId, 'Starting autonomous gap-filling process...');
+    /**
+     * Enrich project understanding until ready for PRD
+     * Event-driven: Process, ask questions, WAIT for user
+     */
+    private async enrichProject(context: Context, event: Event): Promise<void> {
+        log('Enriching project understanding...');
+        wsManager.sendLog(context.projectId, 'Enriching project understanding...');
 
         // Load current state from session memory
         const initialAnalysisStr = memoryService.getSession(context.projectId, 'initial_analysis');
@@ -132,16 +138,21 @@ export class PlanHandler extends BaseHandler {
 
         const initialAnalysis = JSON.parse(initialAnalysisStr.content);
         const { description, gaps, confidence: currentConfidence } = initialAnalysis;
-        wsManager.sendLog(context.projectId, `Loaded initial analysis. Current confidence: ${currentConfidence}%`, { gaps });
+        wsManager.sendLog(context.projectId, `Current confidence: ${currentConfidence}%`, { gaps });
 
-        // Ask E.L.L.A to research and fill gaps autonomously
-        wsManager.sendFiller(context.projectId, 'analyzing gaps and conducting research...');
-
+        // Step 1: Research fillable gaps
+        wsManager.sendFiller(context.projectId, 'researching technical details...');
         const gapFillingResult = await conductGapFillingResearch(context, description, gaps);
 
-        // Recalculate confidence with filled gaps
-        wsManager.sendFiller(context.projectId, 'updating confidence with research findings...');
+        // Step 2: Update project understanding with research
+        if (gapFillingResult.filledGaps.length > 0) {
+            const researchSummary = summarizeResearch(gapFillingResult.filledGaps);
+            await updateProjectUnderstanding(context, researchSummary, 'research');
+            wsManager.sendMessage(context.projectId, { message: researchSummary });
+        }
 
+        // Step 3: Recalculate confidence
+        wsManager.sendFiller(context.projectId, 'calculating confidence...');
         const updatedConfidence = await recalculateConfidence(
             context,
             description,
@@ -151,7 +162,7 @@ export class PlanHandler extends BaseHandler {
 
         log(`Confidence updated: ${currentConfidence}% → ${updatedConfidence.confidence}%`);
 
-        // Update session memory
+        // Step 4: Update session memory
         memoryService.setSession(context.projectId, 'initial_analysis', JSON.stringify({
             description,
             gaps: updatedConfidence.remainingGaps,
@@ -161,30 +172,27 @@ export class PlanHandler extends BaseHandler {
             timestamp: new Date().toISOString()
         }));
 
-        log('passed')
-        // Check if we still need user input
-        if (updatedConfidence.confidence >= CONFIDENCE_THRESHOLD - 5) { // 90% threshold for research
+        context.planningData!.confidence = updatedConfidence.confidence;
+
+        // Step 5: Check if ready for PRD
+        if (updatedConfidence.confidence >= CONFIDENCE_THRESHOLD) {
             wsManager.sendMessage(context.projectId, {
-                message: `✅ Research complete! Confidence now at ${updatedConfidence.confidence}%. Ready to proceed.`
+                message: `✅ Confidence at ${updatedConfidence.confidence}%! Generating PRD...`
             });
-
-            // Show what was researched
-            if (gapFillingResult.filledGaps.length > 0) {
-                const summary = summarizeResearch(gapFillingResult.filledGaps);
-                wsManager.sendMessage(context.projectId, { message: summary });
-            }
-
-            if (updatedConfidence.confidence >= CONFIDENCE_THRESHOLD) {
-                await this.completeScreen1(context);
-            }
-        } else {
-            // Still need user input for business decisions
-            wsManager.sendMessage(context.projectId, {
-                message: `I've researched technical details (confidence: ${updatedConfidence.confidence}%), but I need your input on some business decisions.`
-            });
-
-            await askClarifyingQuestions(context, updatedConfidence.remainingGaps);
+            await generatePRD(context);
+            await this.completeScreen1(context);
+            return;
         }
+
+        // Step 6: Ask user about remaining gaps
+        wsManager.sendMessage(context.projectId, {
+            message: `Confidence: ${updatedConfidence.confidence}%. I need your input on some decisions.`
+        });
+
+        // Ask and WAIT - no loops, just return after asking
+        await askClarifyingQuestions(context, updatedConfidence.remainingGaps);
+
+        // Function returns here - next call happens when user answers
     }
 
     // ==========================================

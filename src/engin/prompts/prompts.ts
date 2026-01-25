@@ -841,5 +841,151 @@ Otherwise, generate 1-3 personas with this structure:
 
 [Repeat for additional personas if applicable]
 
-Keep each persona under 100 words. Focus on actionable insights for development.`
+
+Keep each persona under 100 words. Focus on actionable insights for development.`,
+
+  // Answer Quality Validation Prompt
+  ANSWER_QUALITY_VALIDATION_PROMPT: `You are validating if user answers actually fill the gaps in project understanding.
+
+For each answer-gap pair, assess:
+1. Does the answer address the gap? (complete/partial/vague/irrelevant)
+2. What is the reasoning for your assessment?
+3. If partial or vague, what specific information is still missing?
+4. If needed, suggest a follow-up question to get the missing info
+
+Return JSON:
+{
+  "validations": [
+    {
+      "answerId": "gap_0_123",
+      "gap": "unclear what database to use",
+      "answer": "PostgreSQL",
+      "fills": true,
+      "quality": "complete",
+      "reasoning": "User clearly specified PostgreSQL as the database"
+    },
+    {
+      "answerId": "gap_1_123",
+      "gap": "authentication method not specified",
+      "answer": "maybe OAuth",
+      "fills": false,
+      "quality": "vague",
+      "reasoning": "Answer is uncertain (uses 'maybe')",
+      "missingInfo": ["Which OAuth provider?", "Social login or custom?"],
+      "suggestedFollowUp": "Which OAuth provider should we use (Google, GitHub, etc.)?"
+    }
+  ],
+  "overallAssessment": "2 of 3 answers are complete, 1 needs clarification"
+}`,
+
+  // Context Merge Prompt
+  CONTEXT_MERGE_PROMPT: `You are merging new user answers into existing project context.
+
+Check for:
+1. Contradictions between new answers and existing filled gaps
+2. How to resolve conflicts (keep existing, use new, or reconcile)
+3. What was updated
+
+Return JSON:
+{
+  "conflicts": [
+    {
+      "field": "database choice",
+      "existingValue": "MongoDB",
+      "newValue": "PostgreSQL",
+      "resolution": "use_new",
+      "reasoning": "User explicitly changed their mind"
+    }
+  ],
+  "updates": ["Updated database to PostgreSQL", "Added OAuth provider: Google"]
+}`,
+
+  // Gap Re-classification Prompt
+  GAP_RECLASSIFICATION_PROMPT: `You are analyzing gaps after user has provided answers.
+
+Your task:
+1. Identify which gaps are NOW RESOLVED (user answered them)
+2. Identify NEW GAPS that emerged from the answers
+3. Identify gaps that are now IRRELEVANT (answered gaps made them unnecessary)
+4. Identify PERSISTENT gaps that still need answering
+
+Return JSON:
+{
+  "resolvedGaps": ["gap1", "gap2"],
+  "newGaps": ["new gap 1", "new gap 2"],
+  "irrelevantGaps": ["gap3"],
+  "persistentGaps": ["gap4", "gap5"]
+}`,
+
+  // PRD Generation Prompt
+  PRD_GENERATION_PROMPT: `You are generating a comprehensive Product Requirements Document (PRD).
+
+Based on the project understanding provided, create a well-structured PRD with:
+
+# [Project Name] - Product Requirements Document
+
+## 1. Executive Summary
+Brief overview of the project, its purpose, and key value proposition.
+
+## 2. Problem Statement
+What problem does this solve? Who has this problem?
+
+## 3. Goals & Objectives
+- Primary goals
+- Success metrics
+- Key performance indicators
+
+## 4. Target Users
+Who will use this product? Include user personas if applicable.
+
+## 5. Features & Requirements
+
+### 5.1 Core Features (Must Have)
+Detailed list of essential features with:
+- Feature name
+- Description
+- User story format: "As a [user], I want [feature] so that [benefit]"
+- Acceptance criteria
+
+### 5.2 Secondary Features (Should Have)
+Nice-to-have features that enhance the product.
+
+### 5.3 Future Considerations (Could Have)
+Features for future iterations.
+
+## 6. Technical Requirements
+
+### 6.1 Technology Stack
+- Frontend
+- Backend
+- Database
+- Infrastructure
+
+### 6.2 Architecture Overview
+High-level architecture decisions.
+
+### 6.3 Integrations
+Third-party services and APIs.
+
+### 6.4 Security Requirements
+Authentication, authorization, data protection.
+
+## 7. Non-Functional Requirements
+- Performance expectations
+- Scalability needs
+- Reliability requirements
+- Accessibility standards
+
+## 8. Constraints & Assumptions
+Known limitations and assumptions made.
+
+## 9. Success Criteria
+How do we know the project is successful?
+
+## 10. Implementation Roadmap
+Suggested phases and milestones.
+
+---
+
+Be specific, detailed, and actionable. Use the information provided to fill in concrete details rather than generic placeholders.`
 } as const

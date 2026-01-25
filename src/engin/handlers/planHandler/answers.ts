@@ -1,5 +1,5 @@
 // planHandler/answers.ts
-// User answer handling and processing
+// User answer handling and processing - simplified for document-centric approach
 
 import { Context } from "../../types/context";
 import { Event } from "../../types/events";
@@ -7,10 +7,13 @@ import { wsManager } from "../../../websocket/manager";
 import { memoryService } from "../../../memory";
 import { log, sendProgressUpdate } from "./utils";
 import { recalculateConfidence } from "./gapFilling";
-import { ValidationResult, ProcessedAnswersResult, CONFIDENCE_THRESHOLD, MAX_CLARIFICATION_ROUNDS } from "./types";
+import { ValidationResult, CONFIDENCE_THRESHOLD } from "./types";
+import { updateProjectUnderstanding } from "./projectUnderstanding";
+import { generatePRD } from "./prdGenerator";
 
 /**
  * Handle answers received from user
+ * Simplified flow: validate → update doc → recalculate → continue or complete
  */
 export async function handleAnswersReceived(
     context: Context,
@@ -24,9 +27,10 @@ export async function handleAnswersReceived(
     }
 ): Promise<void> {
     log(`Answers received for ${context.projectId}`);
-    const { answers } = event.payload;
+    const { answers } = event.payload.message;
+    log(event, answers);
 
-    // Validate answers
+    // Step 1: Basic validation
     const validation = validateAnswers(answers);
     if (!validation.valid) {
         wsManager.sendMessage(context.projectId, {
@@ -37,10 +41,14 @@ export async function handleAnswersReceived(
 
     wsManager.sendFiller(context.projectId, 'Processing your answers...');
 
-    // Store answers in session memory
+    // Step 2: Store answers in session memory
     await storeUserAnswers(context, answers);
 
-    // Process answers and update confidence
+    // Step 3: Format answers and update project understanding doc
+    const answersText = formatAnswersForDoc(answers);
+    await updateProjectUnderstanding(context, answersText, 'user_answer');
+
+    // Step 4: Process answers and update confidence
     const { confidence, filledGaps } = await processAnswers(context, answers);
 
     // Track clarification round
@@ -54,14 +62,34 @@ export async function handleAnswersReceived(
         clarificationRound: currentRound
     });
 
-    // Evaluate if we can complete screen or need more clarification
-    await evaluateScreenCompletion(context, confidence, currentRound, callbacks);
+    // Step 5: Check if ready for PRD or need more enrichment
+    if (confidence >= CONFIDENCE_THRESHOLD) {
+        wsManager.sendMessage(context.projectId, {
+            message: `✅ Confidence at ${confidence}%! Generating PRD...`
+        });
+        await generatePRD(context);
+        await callbacks.completeScreen1(context);
+    } else {
+        // Continue enrichment - the callback will handle asking more questions
+        await callbacks.increaseConfidence(context, event);
+    }
+}
+
+/**
+ * Format answers for the project understanding document
+ */
+function formatAnswersForDoc(answers: any[]): string {
+    return answers.map(a => {
+        const question = a.question || a.id || 'Question';
+        return `**Q: ${question}**\nA: ${a.answer}`;
+    }).join('\n\n');
 }
 
 /**
  * Validate user answers for completeness
  */
 export function validateAnswers(answers: any[]): ValidationResult {
+    log(`Validating answers ${answers}`);
     if (!answers || !Array.isArray(answers)) {
         return { valid: false, message: 'Invalid answer format. Please provide answers as an array.' };
     }
@@ -97,12 +125,13 @@ export async function storeUserAnswers(context: Context, answers: any[]): Promis
 
 /**
  * Process user answers and recalculate confidence
+ * Simplified: just update gaps and recalculate
  */
 export async function processAnswers(
     context: Context,
     answers: any[]
-): Promise<ProcessedAnswersResult> {
-    log(`Processing ${answers.length} answers for ${context.projectId}`);
+): Promise<{ confidence: number; filledGaps: string[] }> {
+    log(`Processing ${answers.length} answers...`);
 
     // Load current analysis state
     const analysisStr = memoryService.getSession(context.projectId, 'initial_analysis');
@@ -113,19 +142,19 @@ export async function processAnswers(
     const analysis = JSON.parse(analysisStr.content);
     const filledGaps: string[] = [];
 
-    // Map answers to gaps (answers have id matching gap_X format)
+    // Map answers to gaps
     for (const answer of answers) {
-        const gapIndex = parseInt(answer.id.replace('gap_', '').split('_')[0]);
+        const gapIndex = parseInt(answer.id?.replace('gap_', '')?.split('_')[0] || '0');
         if (!isNaN(gapIndex) && analysis.gaps && analysis.gaps[gapIndex]) {
             filledGaps.push(analysis.gaps[gapIndex]);
         }
     }
 
-    // Combine existing filled gaps with new ones from user
+    // Combine existing filled gaps with new ones
     const existingFilledGaps = analysis.filledGaps || [];
     const allFilledGaps = [...existingFilledGaps, ...filledGaps.map(g => ({
         gap: g,
-        resolution: answers.find(a => a.id.includes(filledGaps.indexOf(g).toString()))?.answer || 'User provided',
+        resolution: answers.find(a => a.id?.includes(filledGaps.indexOf(g).toString()))?.answer || 'User provided',
         source: 'user_answer'
     }))];
 
@@ -157,31 +186,4 @@ export async function processAnswers(
         confidence: updatedConfidence.confidence,
         filledGaps
     };
-}
-
-/**
- * Evaluate if screen can be completed or needs more clarification
- */
-async function evaluateScreenCompletion(
-    context: Context,
-    confidence: number,
-    currentRound: number,
-    callbacks: {
-        completeScreen1: (context: Context) => Promise<void>;
-        handleMaxRoundsReached: (context: Context, confidence: number) => Promise<void>;
-        increaseConfidence: (context: Context, event: Event) => Promise<void>;
-    }
-): Promise<void> {
-    if (confidence >= CONFIDENCE_THRESHOLD) {
-        wsManager.sendMessage(context.projectId, {
-            message: `✅ Confidence at ${confidence}%! Ready to complete this phase.`
-        });
-        await callbacks.completeScreen1(context);
-    } else if (currentRound >= MAX_CLARIFICATION_ROUNDS) {
-        await callbacks.handleMaxRoundsReached(context, confidence);
-    } else {
-        wsManager.sendLog(context.projectId,
-            `Confidence ${confidence}% < ${CONFIDENCE_THRESHOLD}%. Round ${currentRound}/${MAX_CLARIFICATION_ROUNDS}. Continuing clarification...`);
-        await callbacks.increaseConfidence(context, {} as Event);
-    }
 }

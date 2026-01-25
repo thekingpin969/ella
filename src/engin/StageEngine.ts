@@ -58,6 +58,7 @@ export class StageEngine {
         // Build full event
         const fullEvent: Event = {
             name: event.name!,
+            type: event.type!,
             projectId: event.projectId!,
             payload: event.payload || {},
             timestamp: event.timestamp || new Date().toISOString()

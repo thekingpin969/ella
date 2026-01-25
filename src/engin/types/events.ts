@@ -28,6 +28,7 @@ export type EventName =
 
 export interface Event {
     name: EventName;
+    type: string;
     projectId: string;
     payload: Record<string, any>;
     timestamp: string;

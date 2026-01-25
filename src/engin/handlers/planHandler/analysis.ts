@@ -8,14 +8,16 @@ import { PROMPTS } from "../../prompts/prompts";
 import { callLLMWithLogging, parseJSONResponse, log } from "./utils";
 import { AnalysisResult, ConfidenceResult } from "./types";
 import { getCachedStage, setCachedStage, CacheKey, isStageCachingEnabled } from "./stageCache";
+import { createProjectUnderstanding } from "./projectUnderstanding";
 
 /**
  * Perform initial analysis of project description
+ * Creates project_understanding.md and calculates initial confidence
  */
 export async function performInitialAnalysis(
     context: Context,
     description: string,
-    onLowConfidence: (context: Context) => Promise<void>
+    onEnrichmentNeeded: (context: Context) => Promise<void>
 ): Promise<void> {
     log(`Starting initial analysis for ${context.projectId}`);
     wsManager.sendFiller(context.projectId, 'analyzing project...');
@@ -38,7 +40,15 @@ export async function performInitialAnalysis(
         // Step 3: Store in context
         context.planningData!.confidence = confidence;
 
-        // Step 4: Store in session memory
+        // Step 4: Create project_understanding.md
+        await createProjectUnderstanding(context, {
+            description,
+            analysis: analysis.message,
+            gaps: analysis.gaps,
+            confidence
+        });
+
+        // Step 5: Store in session memory (for backward compat)
         memoryService.setSession(context.projectId, 'initial_analysis', JSON.stringify({
             description,
             gaps: analysis.gaps,
@@ -47,17 +57,20 @@ export async function performInitialAnalysis(
             timestamp: new Date().toISOString()
         }));
 
-        // Step 5: Send message to user
+        // Step 6: Send message to user
         wsManager.sendMessage(context.projectId, { message: analysis.message });
 
         log(`Initial analysis complete: ${confidence}% confidence`);
 
-        // Step 6: Check if we need to increase confidence
-        if (confidence < 90) {
-            log('Confidence is low, trying to increase confidence');
-            await onLowConfidence(context);
+        // Step 7: If confidence is low, start enrichment
+        if (confidence < 95) {
+            log('Confidence below 95%, starting enrichment process');
+            await onEnrichmentNeeded(context);
         } else {
-            log('Have enough confidence to move to the next step');
+            log('Confidence at 95%+, ready for PRD generation');
+            wsManager.sendMessage(context.projectId, {
+                message: `✅ High confidence (${confidence}%)! Ready to generate PRD.`
+            });
         }
 
     } catch (error: any) {

@@ -67,6 +67,7 @@ app.get(
 
         stageEngine.emitEvent({
           name: 'user_response',
+          type: message.type,
           payload: {
             message
           },
