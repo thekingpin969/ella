@@ -1,6 +1,6 @@
 import { drive } from "./client";
 import { getAuth } from "./auth";
-import { readFileSync } from "fs";
+import { createReadStream } from "fs";
 import { drive_v3 } from "googleapis";
 
 export async function uploadFile(
@@ -14,7 +14,7 @@ export async function uploadFile(
     name: fileName,
     ...(parentId && { parents: [parentId] }),
   };
-  const media = { mimeType, body: readFileSync(filePath) };
+  const media = { mimeType, body: createReadStream(filePath) };
   const res = await drive.files.create({
     requestBody: metadata,
     media,

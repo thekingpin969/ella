@@ -1,13 +1,9 @@
-// planHandler/prdGenerator.ts
-// Generates the final PRD document when confidence is met
-
 import { Context } from "../../types/context";
 import { log, callLLMWithLogging } from "./utils";
 import { wsManager } from "../../../websocket/manager";
 import { getProjectUnderstanding } from "./projectUnderstanding";
 import { PROMPTS } from "../../prompts/prompts";
-import * as fs from "fs/promises";
-import * as path from "path";
+import { fsManager } from "../../../fs";
 
 /**
  * Generate the final PRD document
@@ -30,7 +26,7 @@ export async function generatePRD(context: Context): Promise<void> {
     // 2. Generate PRD via LLM
     const prdContent = await generatePRDContent(context, understanding);
 
-    // 3. Save to docs/prd.md
+    // 3. Save to docs/prd.md in workspace
     await savePRD(context, prdContent);
 
     // 4. Notify user
@@ -62,14 +58,9 @@ async function generatePRDContent(
 }
 
 /**
- * Save PRD to file
+ * Save PRD to workspace directory
  */
 async function savePRD(context: Context, content: string): Promise<void> {
-    const docsPath = path.join('./projects', context.projectId, 'docs');
-    const prdPath = path.join(docsPath, 'prd.md');
-
-    await fs.mkdir(docsPath, { recursive: true });
-    await fs.writeFile(prdPath, content, 'utf-8');
-
-    log(`Saved PRD to: ${prdPath}`);
+    await fsManager.writeFile(context.projectId, 'docs/prd.md', content);
+    log(`Saved PRD to workspace: docs/prd.md`);
 }

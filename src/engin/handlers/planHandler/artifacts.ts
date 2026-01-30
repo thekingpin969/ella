@@ -8,6 +8,7 @@ import { fsManager } from "../../../fs";
 import { PROMPTS } from "../../prompts/prompts";
 import { callLLMWithLogging, withRetry, log } from "./utils";
 import { Artifact } from "./types";
+import { getProjectUnderstanding } from "./projectUnderstanding";
 
 /**
  * Complete Screen 1: Generate artifacts and transition
@@ -101,12 +102,26 @@ export async function generateScreen1Artifacts(context: Context): Promise<Artifa
  * Generate project vision document using LLM
  */
 async function generateProjectVision(context: Context, analysis: any): Promise<string> {
+    // Get the full project understanding document
+    const projectUnderstanding = await getProjectUnderstanding(context);
+
+    // Combine full context with analysis summary
+    const fullContext = `## Complete Project Understanding
+
+${projectUnderstanding}
+
+---
+
+## Analysis Summary (for quick reference)
+
+${JSON.stringify(analysis, null, 2)}`;
+
     const response = await callLLMWithLogging(
         context.projectId,
         'Generate Project Vision',
         [
             { role: 'system', content: PROMPTS.PROJECT_VISION_PROMPT },
-            { role: 'user', content: JSON.stringify(analysis) }
+            { role: 'user', content: fullContext }
         ],
         { temperature: 0.7, max_tokens: 2000 }
     );
@@ -118,12 +133,26 @@ async function generateProjectVision(context: Context, analysis: any): Promise<s
  * Generate user personas document using LLM
  */
 async function generateUserPersonas(context: Context, analysis: any): Promise<string> {
+    // Get the full project understanding document
+    const projectUnderstanding = await getProjectUnderstanding(context);
+
+    // Combine full context with analysis summary
+    const fullContext = `## Complete Project Understanding
+
+${projectUnderstanding}
+
+---
+
+## Analysis Summary (for quick reference)
+
+${JSON.stringify(analysis, null, 2)}`;
+
     const response = await callLLMWithLogging(
         context.projectId,
         'Generate User Personas',
         [
             { role: 'system', content: PROMPTS.USER_PERSONAS_PROMPT },
-            { role: 'user', content: JSON.stringify(analysis) }
+            { role: 'user', content: fullContext }
         ],
         { temperature: 0.7, max_tokens: 1500 }
     );

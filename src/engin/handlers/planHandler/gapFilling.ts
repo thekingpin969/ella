@@ -9,9 +9,11 @@ import { toolExecutor } from "../../../tools";
 import { callLLMWithLogging, parseJSONResponse, log } from "./utils";
 import { GapFillingResult, GapClassification, FilledGap, RecalculatedConfidence } from "./types";
 import { getCachedStage, setCachedStage, CacheKey } from "./stageCache";
+import { getProjectUnderstanding } from "./projectUnderstanding";
 
 /**
  * Conduct gap filling research autonomously
+ * Uses project_understanding.md for full context
  */
 export async function conductGapFillingResearch(
     context: Context,
@@ -30,9 +32,12 @@ export async function conductGapFillingResearch(
         log(`Starting gap filling for ${gaps.length} gaps...`);
         wsManager.sendLog(context.projectId, `Starting research for ${gaps.length} gaps...`, { gaps });
 
+        // Get full project context from document
+        const projectContext = await getProjectUnderstanding(context);
+
         // Step 1: Identify which gaps are fillable vs unfillable
         wsManager.sendFiller(context.projectId, "Classifying gaps...");
-        const { fillable, unfillable } = await identifyFillableGaps(context, description, gaps);
+        const { fillable, unfillable } = await identifyFillableGaps(context, projectContext || description, gaps);
 
         log(`Identified ${fillable.length} fillable gaps and ${unfillable.length} unfillable gaps.`);
         wsManager.sendLog(context.projectId, `Gap classification complete.`, {
@@ -47,7 +52,7 @@ export async function conductGapFillingResearch(
 
         const filledResults = await Promise.all(
             fillable.map(async (gapItem) => {
-                return fillGap(context, description, gapItem.gap);
+                return fillGap(context, projectContext || description, gapItem.gap);
             })
         );
 
@@ -72,10 +77,11 @@ export async function conductGapFillingResearch(
 
 /**
  * Classify gaps into fillable (technical) and unfillable (business)
+ * Uses full project context for better classification
  */
 export async function identifyFillableGaps(
     context: Context,
-    description: string,
+    projectContext: string,
     gaps: string[]
 ): Promise<GapClassification> {
     try {
@@ -84,7 +90,10 @@ export async function identifyFillableGaps(
             "Gap Classification",
             [
                 { role: "system", content: PROMPTS.GAP_CLASSIFICATION_PROMPT },
-                { role: "user", content: JSON.stringify({ description, gaps }) }
+                {
+                    role: "user",
+                    content: `## Project Context\n\n${projectContext}\n\n## Gaps to Classify\n\n${JSON.stringify(gaps, null, 2)}`
+                }
             ],
             { temperature: 0.1, max_tokens: 4000 }
         );
@@ -105,10 +114,11 @@ export async function identifyFillableGaps(
 
 /**
  * Fill a single gap using research tools
+ * Uses full project context for tailored research
  */
 export async function fillGap(
     context: Context,
-    description: string,
+    projectContext: string,
     gap: string
 ): Promise<FilledGap> {
     try {
@@ -123,7 +133,7 @@ export async function fillGap(
                     role: "system",
                     content: PROMPTS.SINGLE_GAP_FILLING_PROMPT
                         .replace("{{GAP}}", gap)
-                        .replace("{{DESCRIPTION}}", description)
+                        .replace("{{DESCRIPTION}}", projectContext)
                 }
             ],
             {
@@ -152,7 +162,7 @@ export async function fillGap(
                         role: "system",
                         content: PROMPTS.SINGLE_GAP_FILLING_PROMPT
                             .replace("{{GAP}}", gap)
-                            .replace("{{DESCRIPTION}}", description)
+                            .replace("{{DESCRIPTION}}", projectContext)
                     },
                     {
                         role: "assistant",
@@ -201,6 +211,7 @@ export async function fillGap(
 
 /**
  * Recalculate confidence with filled gaps
+ * Uses full project context for accurate assessment
  */
 export async function recalculateConfidence(
     context: Context,
@@ -219,6 +230,9 @@ export async function recalculateConfidence(
     try {
         wsManager.sendFiller(context.projectId, "Recalculating confidence metrics...");
 
+        // Get full project context for accurate confidence calculation
+        const projectContext = await getProjectUnderstanding(context);
+
         const response = await callLLMWithLogging(
             context.projectId,
             "Recalculate Confidence",
@@ -226,12 +240,11 @@ export async function recalculateConfidence(
                 { role: "system", content: PROMPTS.CONFIDENCE_SYSTEM_PROMPT },
                 {
                     role: "user",
-                    content: JSON.stringify({
-                        description,
+                    content: `## Full Project Context\n\n${projectContext || description}\n\n## Gap Analysis\n\n${JSON.stringify({
                         original_gaps: originalGaps,
                         filled_gaps: gapFillingResult.filledGaps,
                         remaining_gaps: gapFillingResult.unfillableGaps
-                    })
+                    }, null, 2)}`
                 }
             ],
             { temperature: 0.1, max_tokens: 10000 }

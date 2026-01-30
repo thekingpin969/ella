@@ -186,46 +186,52 @@ export class FileSystemManager {
         projectId: string,
         relativePath: string,
         driveFolderId: string
-    ): Promise<string> {
+    ): Promise<string | null> {
         const db = getDB();
         const filesCollection = db.collection("files");
 
         const fullPath = this.getFilePath(projectId, relativePath);
 
-        const existingFile = await filesCollection.findOne({
-            projectId,
-            path: relativePath
-        });
+        try {
+            const existingFile = await filesCollection.findOne({
+                projectId,
+                path: relativePath
+            });
 
-        let driveFileId: string;
+            let driveFileId: string;
 
-        if (existingFile?.driveFileId) {
-            const content = await this.readFile(projectId, relativePath);
-            await updateFile(existingFile.driveFileId, content);
-            driveFileId = existingFile.driveFileId;
-            logger.info(`[FSM] ☁️ Updated in Drive: ${relativePath}`);
-        } else {
-            const fileName = path.basename(relativePath);
-            const mimeType = this.getMimeType(fileName);
-            driveFileId = await uploadFile(fullPath, fileName, mimeType, driveFolderId);
-            logger.info(`[FSM] ☁️ Uploaded to Drive: ${relativePath}`);
+            if (existingFile?.driveFileId) {
+                const content = await this.readFile(projectId, relativePath);
+                await updateFile(existingFile.driveFileId, content);
+                driveFileId = existingFile.driveFileId;
+                logger.info(`[FSM] ☁️ Updated in Drive: ${relativePath}`);
+            } else {
+                const fileName = path.basename(relativePath);
+                const mimeType = this.getMimeType(fileName);
+                driveFileId = await uploadFile(fullPath, fileName, mimeType, driveFolderId);
+                logger.info(`[FSM] ☁️ Uploaded to Drive: ${relativePath}`);
+            }
+
+            await filesCollection.updateOne(
+                { projectId, path: relativePath },
+                {
+                    $set: {
+                        projectId,
+                        path: relativePath,
+                        driveFileId,
+                        lastModified: new Date(),
+                        size: (await fs.stat(fullPath)).size
+                    }
+                },
+                { upsert: true }
+            );
+
+            return driveFileId;
+        } catch (error: any) {
+            logger.warn(`[FSM] ⚠️  Drive sync failed for ${relativePath}: ${error.message}`);
+            logger.info(`[FSM] ℹ️  File is still saved locally at: ${fullPath}`);
+            return null;
         }
-
-        await filesCollection.updateOne(
-            { projectId, path: relativePath },
-            {
-                $set: {
-                    projectId,
-                    path: relativePath,
-                    driveFileId,
-                    lastModified: new Date(),
-                    size: (await fs.stat(fullPath)).size
-                }
-            },
-            { upsert: true }
-        );
-
-        return driveFileId;
     }
 
     private getMimeType(filename: string): string {

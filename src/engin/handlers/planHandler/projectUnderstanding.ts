@@ -4,30 +4,13 @@
 import { Context } from "../../types/context";
 import { log } from "./utils";
 import { wsManager } from "../../../websocket/manager";
-import * as fs from "fs/promises";
-import * as path from "path";
+import { fsManager } from "../../../fs";
 
 /**
- * Get the path to the project's docs directory
+ * Get the path to project_understanding.md (relative to workspace)
  */
-function getDocsPath(context: Context): string {
-    // Use project ID to create a consistent path for docs
-    return path.join('./projects', context.projectId, 'docs');
-}
-
-/**
- * Get the path to project_understanding.md
- */
-function getUnderstandingPath(context: Context): string {
-    return path.join(getDocsPath(context), 'project_understanding.md');
-}
-
-/**
- * Ensure docs directory exists
- */
-async function ensureDocsDir(context: Context): Promise<void> {
-    const docsPath = getDocsPath(context);
-    await fs.mkdir(docsPath, { recursive: true });
+function getUnderstandingPath(): string {
+    return 'docs/project_understanding.md';
 }
 
 /**
@@ -43,8 +26,6 @@ export async function createProjectUnderstanding(
     }
 ): Promise<void> {
     log('Creating project_understanding.md...');
-
-    await ensureDocsDir(context);
 
     const timestamp = new Date().toISOString();
 
@@ -79,8 +60,8 @@ ${initialData.gaps.map(g => `- ${g}`).join('\n')}
 
 `;
 
-    const filePath = getUnderstandingPath(context);
-    await fs.writeFile(filePath, content, 'utf-8');
+    const filePath = getUnderstandingPath();
+    await fsManager.writeFile(context.projectId, filePath, content);
 
     log(`Created: ${filePath}`);
     wsManager.sendLog(context.projectId, `Created project_understanding.md`);
@@ -97,7 +78,7 @@ export async function updateProjectUnderstanding(
 ): Promise<void> {
     log('Updating project_understanding.md...');
 
-    const filePath = getUnderstandingPath(context);
+    const filePath = getUnderstandingPath();
     const timestamp = new Date().toLocaleString();
 
     const sourceLabel = {
@@ -105,6 +86,14 @@ export async function updateProjectUnderstanding(
         'user_answer': '💬 User Clarification',
         'analysis': '📊 Analysis Update'
     }[source];
+
+    // Read existing content
+    let existingContent = '';
+    try {
+        existingContent = await fsManager.readFile(context.projectId, filePath);
+    } catch (error) {
+        log('project_understanding.md not found, creating new one');
+    }
 
     const appendContent = `
 ### ${sourceLabel} (${timestamp})
@@ -115,8 +104,9 @@ ${newInfo}
 
 `;
 
-    // Append to existing file
-    await fs.appendFile(filePath, appendContent, 'utf-8');
+    // Append to existing content
+    const newContent = existingContent + appendContent;
+    await fsManager.writeFile(context.projectId, filePath, newContent);
 
     log(`Updated project_understanding.md with ${source}`);
 }
@@ -125,10 +115,10 @@ ${newInfo}
  * Get the full project understanding document
  */
 export async function getProjectUnderstanding(context: Context): Promise<string> {
-    const filePath = getUnderstandingPath(context);
+    const filePath = getUnderstandingPath();
 
     try {
-        const content = await fs.readFile(filePath, 'utf-8');
+        const content = await fsManager.readFile(context.projectId, filePath);
         return content;
     } catch (error) {
         log('project_understanding.md not found, returning empty');
@@ -140,12 +130,6 @@ export async function getProjectUnderstanding(context: Context): Promise<string>
  * Check if project understanding exists
  */
 export async function hasProjectUnderstanding(context: Context): Promise<boolean> {
-    const filePath = getUnderstandingPath(context);
-
-    try {
-        await fs.access(filePath);
-        return true;
-    } catch {
-        return false;
-    }
+    const filePath = getUnderstandingPath();
+    return fsManager.fileExists(context.projectId, filePath);
 }
