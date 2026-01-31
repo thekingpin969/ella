@@ -68,20 +68,28 @@ export async function generateScreen1Artifacts(context: Context): Promise<Artifa
         context.projectId,
         'Generating project vision'
     );
-    artifacts.push({ path: 'artifacts/project-vision.md', content: projectVision });
+    artifacts.push({ path: 'docs/project-vision.md', content: projectVision });
 
-    // 2. Context Analysis (JSON)
+    // 2. Context Analysis (JSON) - comprehensive gap and confidence tracking
     const contextAnalysis = {
         projectId: context.projectId,
         projectName: context.projectName,
         description: analysis.description || context.planningData?.initialDescription,
+        // Gap tracking
+        identifiedGaps: analysis.gaps || [],
         filledGaps: analysis.filledGaps || [],
-        confidence: analysis.confidence || context.planningData?.confidence,
+        remainingGaps: analysis.remainingGaps || [],
+        // Confidence tracking
+        initialConfidence: analysis.initialConfidence,
+        finalConfidence: analysis.confidence || context.planningData?.confidence,
         reasoning: analysis.reasoning,
-        generatedAt: new Date().toISOString()
+        // Metadata
+        generatedAt: new Date().toISOString(),
+        screenNumber: 1,
+        status: 'complete'
     };
     artifacts.push({
-        path: 'artifacts/context-analysis.json',
+        path: 'docs/context-analysis.json',
         content: JSON.stringify(contextAnalysis, null, 2)
     });
 
@@ -92,7 +100,7 @@ export async function generateScreen1Artifacts(context: Context): Promise<Artifa
         'Generating user personas'
     );
     if (userPersonas && !userPersonas.includes('N/A')) {
-        artifacts.push({ path: 'artifacts/user-personas.md', content: userPersonas });
+        artifacts.push({ path: 'docs/user-personas.md', content: userPersonas });
     }
 
     return artifacts;

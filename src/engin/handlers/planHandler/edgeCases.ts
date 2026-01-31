@@ -5,8 +5,10 @@ import { Context } from "../../types/context";
 import { Event } from "../../types/events";
 import { wsManager } from "../../../websocket/manager";
 import { memoryService } from "../../../memory";
+import { fsManager } from "../../../fs";
 import { log, callLLMWithLogging } from "./utils";
 import { generatePRD } from "./prdGenerator";
+import { generateScreen1Artifacts } from "./artifacts";
 
 /**
  * Handle user override (force next screen at low confidence)
@@ -123,8 +125,19 @@ async function handleOverrideCommand(context: Context): Promise<void> {
     try {
         await generatePRD(context);
 
+        // Generate Screen 1 artifacts (project-vision, context-analysis, user-personas)
+        wsManager.sendFiller(context.projectId, 'generating planning artifacts...');
+        const artifacts = await generateScreen1Artifacts(context);
+
+        // Save artifacts
+        for (const artifact of artifacts) {
+            await fsManager.writeFile(context.projectId, artifact.path, artifact.content);
+            context.artifacts.push(artifact.path);
+            log(`Generated artifact: ${artifact.path}`);
+        }
+
         wsManager.sendMessage(context.projectId, {
-            message: `✅ PRD generated! Moving to next stage.`
+            message: `✅ PRD and ${artifacts.length} planning artifacts generated! Moving to next stage.`
         });
 
         // Broadcast screen completion
