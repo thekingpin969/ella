@@ -88,6 +88,11 @@ export class PlanHandler extends BaseHandler {
             case "websocket_message":
                 this.onWebSocketMessage(context, event);
                 break;
+            case "user_message":
+                // Content could be in payload.message.content or payload.content depending on source
+                const content = event.payload.message?.content || event.payload.content || '';
+                handleUserMessage(context, content);
+                break;
             default:
                 log(`Unknown event: ${event.type}`);
                 break;
