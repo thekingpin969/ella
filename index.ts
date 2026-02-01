@@ -37,40 +37,32 @@ app.get(
       data: { projectId },
       onOpen(_event, ws: any) {
         wsManager.addConnection(projectId, ws);
-        const prevMsg: any = chatDB.loadMessages(projectId, 1)
-        // log(prevMsg)
-        for (const msg of prevMsg) {
-          // Parse content if it's a JSON string (e.g., for questions)
-          let content = msg.content;
-          if (typeof content === 'string' && (msg.type === 'questions' || content.startsWith('{'))) {
-            try {
-              content = JSON.parse(content);
-            } catch (e) {
-              // Keep as string if parsing fails
-            }
-          }
 
-          wsManager.broadcast(projectId, {
-            type: msg.type || 'message', // Use the stored type from DB
-            data: {
-              role: msg.role,
-              content: content,
-              confidence: 0
-            },
-            timestamp: msg.timestamp
-          })
-        }
+        // Don't replay old chat messages - just check if workspace exists
+        // Screen 2 flow will verify artifacts exist when start_uiux_design is received
+        logger.info(`[WS] Client connected to ${projectId}`);
       },
       onMessage(event: any, ws: any) {
         const message = JSON.parse(event.data);
         logger.info("Received message:", message);
 
+        // Screen 2 events should use the message type as the event name
+        const screen2Events = [
+          'start_uiux_design',
+          'mood_selected',
+          'inspirations_rated',
+          'screen_feedback',
+          'complete_screen2'
+        ];
+
+        const eventName = screen2Events.includes(message.type)
+          ? message.type
+          : 'user_response';
+
         stageEngine.emitEvent({
-          name: 'user_response',
+          name: eventName,
           type: message.type,
-          payload: {
-            message
-          },
+          payload: message.type === 'user_response' ? { message } : message,
           projectId,
         })
 

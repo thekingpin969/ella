@@ -1,4 +1,5 @@
 import { Stage, PlanningScreen } from "./stages";
+import { UIUXData } from "../handlers/uiuxHandler/types";
 
 export interface Message {
     role: "user" | "assistant";
@@ -14,6 +15,9 @@ export interface PlanningData {
     initialAnalysis?: any;
     clarificationRound?: number;
     askedQuestionIds?: string[];
+
+    // Screen 2: UI/UX data
+    uiuxData?: UIUXData;
 }
 
 export interface Context {

@@ -66,11 +66,15 @@ export class StageEngine {
 
         logger.info(`[StageEngine] Event received: ${fullEvent.name} for ${fullEvent.projectId}`);
 
-        // Get context
-        const context = this.contexts.get(fullEvent.projectId);
+        // Get or create context
+        let context = this.contexts.get(fullEvent.projectId);
         if (!context) {
-            logger.error(`[StageEngine] Context not found: ${fullEvent.projectId}`);
-            return;
+            // Try to restore context for existing project (e.g., after server restart)
+            context = this.restoreOrCreateContext(fullEvent.projectId);
+            if (!context) {
+                logger.error(`[StageEngine] Failed to create context for: ${fullEvent.projectId}`);
+                return;
+            }
         }
 
         // Get handler for current stage
@@ -85,6 +89,32 @@ export class StageEngine {
 
         // Check for stage transitions
         this.checkStageTransition(context, fullEvent);
+    }
+
+    /**
+     * Restore context for existing project or create minimal context
+     */
+    private restoreOrCreateContext(projectId: string): Context | undefined {
+        logger.info(`[StageEngine] Restoring context for ${projectId}`);
+
+        // Create a minimal context for the project
+        // The handler will verify artifacts exist
+        const context: Context = {
+            projectId,
+            projectName: projectId, // Will be unknown, handlers can update
+            stage: Stage.PLANNING,
+            driveFolderId: '',
+            planningData: {
+                currentScreen: 2, // Assume Screen 2 for existing projects
+                messages: [],
+                confidence: 50 // Mid-level confidence for restored projects
+            },
+            artifacts: []
+        };
+
+        this.contexts.set(projectId, context);
+        logger.info(`[StageEngine] Created restored context for ${projectId}`);
+        return context;
     }
 
     /**

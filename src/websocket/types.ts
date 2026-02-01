@@ -7,7 +7,14 @@ export type WSMessagetType =
   | "typing"
   | "message"
   | "screen_complete"
-  | "planning_complete";
+  | "planning_complete"
+  // Screen 2: UI/UX message types
+  | "mood_selection"
+  | "inspiration_gallery"
+  | "taste_analysis"
+  | "screen_preview"
+  | "screen2_complete"
+  | "log";
 
 export interface WSMessage {
   type: WSMessagetType;

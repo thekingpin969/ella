@@ -24,12 +24,42 @@ import { handleUserOverride, handleAbort, handleUserMessage } from "./edgeCases"
 import { updateProjectUnderstanding } from "./projectUnderstanding";
 import { generatePRD } from "./prdGenerator";
 
+// Screen 2: UIUXHandler
+import { UIUXHandler } from "../uiuxHandler/index";
+
+// Screen 2 events that should be routed to UIUXHandler
+const SCREEN2_EVENTS = [
+    'start_uiux_design',
+    'mood_selected',
+    'inspirations_rated',
+    'screen_feedback',
+    'complete_screen2'
+];
+
 export class PlanHandler extends BaseHandler {
+    // UIUXHandler instance for Screen 2
+    private uiuxHandler = new UIUXHandler();
 
     handle(context: Context, event: Event): void {
         log(`Handling event: ${event.name}`);
         wsManager.sendLog(context.projectId, `Handling event: ${event.name}`, { event });
 
+        // Check if this is a Screen 2 event
+        if (SCREEN2_EVENTS.includes(event.name)) {
+            log(`Routing to UIUXHandler: ${event.name}`);
+            this.uiuxHandler.handle(context, event);
+            return;
+        }
+
+        // Also route if we're on Screen 2 and it's a general event
+        const currentScreen = context.planningData?.currentScreen || 1;
+        if (currentScreen === 2 && !this.isScreen1Event(event.name)) {
+            log(`On Screen 2, routing to UIUXHandler: ${event.name}`);
+            this.uiuxHandler.handle(context, event);
+            return;
+        }
+
+        // Screen 1 events
         switch (event.name) {
             case "context_created":
                 this.onContextCreated(context, event);
@@ -53,6 +83,18 @@ export class PlanHandler extends BaseHandler {
                 this.handleAbort(context);
                 break;
         }
+    }
+
+    // Check if this is a Screen 1 specific event
+    private isScreen1Event(eventName: string): boolean {
+        return [
+            'context_created',
+            'start_initial_analysis',
+            'user_response',
+            'answers_received',
+            'screen_complete',
+            'abort_planning'
+        ].includes(eventName);
     }
 
     // ==========================================

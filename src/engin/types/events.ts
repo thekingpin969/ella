@@ -7,7 +7,7 @@ export type EventName =
     // WebSocket messages
     | "websocket_message"
 
-    // Planning stage
+    // Planning stage - Screen 1
     | "screen_complete"
     | "answers_received"
     | "start_initial_analysis"
@@ -15,6 +15,13 @@ export type EventName =
     | "user_response"
     | "force_next_screen"
     | "abort_planning"
+
+    // Planning stage - Screen 2 (UI/UX)
+    | "start_uiux_design"
+    | "mood_selected"
+    | "inspirations_rated"
+    | "screen_feedback"
+    | "complete_screen2"
 
     // Implementation stage
     | "story_complete"
