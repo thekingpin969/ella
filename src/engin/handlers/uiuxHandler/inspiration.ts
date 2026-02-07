@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { callLLMWithLogging, log, safeJSONParse } from "./utils";
 import { getCachedUIUXStage, setCachedUIUXStage, UIUXCacheKey } from "./stageCache";
+import { PROMPTS } from "../../prompts/prompts";
 
 interface InspirationRatingInput {
     id: string;
@@ -59,7 +60,7 @@ export async function searchInspirations(context: Context): Promise<InspirationI
         context.projectId,
         'Generate UI Inspirations',
         [
-            { role: 'system', content: INSPIRATION_GENERATION_PROMPT },
+            { role: 'system', content: PROMPTS.INSPIRATION_GENERATION_PROMPT },
             { role: 'user', content: `Mood: ${mood}\nProject: ${projectContext}` }
         ],
         { temperature: 0.8, max_tokens: 2000 }
@@ -176,7 +177,7 @@ ${uiuxData.mood}
         context.projectId,
         'Analyze Taste Patterns',
         [
-            { role: 'system', content: TASTE_ANALYSIS_PROMPT },
+            { role: 'system', content: PROMPTS.TASTE_ANALYSIS_PROMPT },
             { role: 'user', content: analysisContext }
         ],
         { temperature: 0.6, max_tokens: 1000 }
@@ -204,52 +205,4 @@ function getDefaultTasteAnalysis(): TasteAnalysis {
     };
 }
 
-// ==========================================
-// PROMPTS
-// ==========================================
 
-const INSPIRATION_GENERATION_PROMPT = `You are E.L.L.A's UI/UX design expert. Generate 6-8 UI inspiration descriptions for the given mood and project type.
-
-For each inspiration, create a realistic description of what a designer would find on Dribbble or Behance.
-
-## Response Format
-Respond with ONLY valid JSON:
-{
-    "inspirations": [
-        {
-            "source": "dribbble",
-            "title": "Clean Dashboard UI",
-            "description": "Modern analytics dashboard with card-based layout, subtle shadows, and a pastel color palette. Features elegant data visualizations and clean typography.",
-            "tags": ["dashboard", "minimal", "cards", "analytics"],
-            "thumbnailUrl": null
-        },
-        ...
-    ]
-}
-
-Generate inspirations that:
-1. Match the specified mood
-2. Are relevant to the project type
-3. Represent variety in layout and approach
-4. Include specific visual details (colors, shapes, interactions)`;
-
-const TASTE_ANALYSIS_PROMPT = `You are E.L.L.A's UI/UX design expert. Analyze the user's preferences based on what they favorited and rejected.
-
-## Response Format
-Respond with ONLY valid JSON:
-{
-    "designSignature": "<A conversational 2-3 sentence description of their taste, e.g. 'You prefer clean, minimal interfaces with generous whitespace. Strong contrast and bold typography catch your eye, while cluttered layouts don't appeal to you.'>",
-    "preferences": {
-        "whitespace": "minimal" | "moderate" | "generous",
-        "corners": "sharp" | "slightly-rounded" | "rounded" | "pill",
-        "colorStyle": "vibrant" | "muted" | "monochrome" | "gradient",
-        "density": "compact" | "balanced" | "spacious",
-        "animations": "none" | "subtle" | "moderate" | "dynamic"
-    }
-}
-
-Analyze patterns:
-- What visual elements appear in favorites but not rejected?
-- What layouts do they prefer?
-- What color styles attract them?
-- How much information density do they like?`;

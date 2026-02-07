@@ -9,6 +9,7 @@ import { fsManager } from "../../../fs";
 import { log, callLLMWithLogging } from "./utils";
 import { generatePRD } from "./prdGenerator";
 import { generateScreen1Artifacts } from "./artifacts";
+import { PROMPTS } from "../../prompts/prompts";
 
 /**
  * Handle user override (force next screen at low confidence)
@@ -193,25 +194,12 @@ Current Project Understanding:
         }
     }
 
-    const systemPrompt = `You are E.L.L.A (Even Logic Loves Automation), an AI project planning assistant.
-
-You are currently in the PLANNING phase, helping the user define their project requirements.
+    const systemPrompt = `${PROMPTS.PLANNER_CHAT_SYSTEM_PROMPT}
 
 ${projectContext}
 
 Current screen: ${context.planningData?.currentScreen || 1} of 3
-Current confidence: ${context.planningData?.confidence || 0}%
-
-INSTRUCTIONS:
-1. Answer questions about the project planning process
-2. Help clarify requirements and provide suggestions
-3. If the user asks about gaps, explain what information is still needed
-4. Be helpful, concise, and professional
-5. Keep responses under 200 words unless more detail is needed
-
-If the user wants to skip the current stage or force-proceed:
-- Remind them they can say "override" or "skip" to proceed with current confidence
-- Explain that lower confidence may result in more clarifications needed later`;
+Current confidence: ${context.planningData?.confidence || 0}%`;
 
     try {
         const response = await callLLMWithLogging(

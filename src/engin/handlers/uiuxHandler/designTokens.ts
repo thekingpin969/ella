@@ -6,6 +6,7 @@ import { wsManager } from "../../../websocket/manager";
 import { DesignTokens } from "./types";
 import { callLLMWithLogging, log, safeJSONParse } from "./utils";
 import { getCachedUIUXStage, setCachedUIUXStage, UIUXCacheKey } from "./stageCache";
+import { PROMPTS } from "../../prompts/prompts";
 
 /**
  * Extract design tokens from approved screen variants
@@ -54,7 +55,7 @@ ${combinedCSS.substring(0, 5000)}
         context.projectId,
         'Extract Design Tokens',
         [
-            { role: 'system', content: DESIGN_TOKENS_PROMPT },
+            { role: 'system', content: PROMPTS.DESIGN_TOKENS_PROMPT },
             { role: 'user', content: analysisContext }
         ],
         { temperature: 0.5, max_tokens: 2000 }
@@ -252,69 +253,4 @@ function getDefaultDesignTokens(): DesignTokens {
     };
 }
 
-// ==========================================
-// PROMPTS
-// ==========================================
 
-const DESIGN_TOKENS_PROMPT = `You are E.L.L.A's design system expert. Extract design tokens from the provided CSS and mood.
-
-## Response Format
-Respond with ONLY valid JSON matching this structure:
-{
-    "colors": {
-        "primary": "#hex",
-        "secondary": "#hex",
-        "background": "#hex",
-        "surface": "#hex",
-        "text": {
-            "primary": "#hex",
-            "secondary": "#hex",
-            "muted": "#hex"
-        },
-        "border": "#hex",
-        "success": "#hex",
-        "warning": "#hex",
-        "error": "#hex"
-    },
-    "typography": {
-        "fontFamily": {
-            "sans": "font stack",
-            "mono": "font stack"
-        },
-        "fontSize": {
-            "xs": "rem value",
-            "sm": "rem value",
-            "base": "rem value",
-            "lg": "rem value",
-            "xl": "rem value",
-            "2xl": "rem value",
-            "3xl": "rem value",
-            "4xl": "rem value"
-        },
-        "fontWeight": {
-            "normal": 400,
-            "medium": 500,
-            "semibold": 600,
-            "bold": 700
-        },
-        "lineHeight": {
-            "tight": "number",
-            "normal": "number",
-            "relaxed": "number"
-        }
-    },
-    "spacing": {
-        "xs": "rem", "sm": "rem", "md": "rem", "lg": "rem", "xl": "rem", "2xl": "rem"
-    },
-    "borderRadius": {
-        "none": "0", "sm": "rem", "md": "rem", "lg": "rem", "xl": "rem", "full": "9999px"
-    },
-    "shadows": {
-        "sm": "css shadow", "md": "css shadow", "lg": "css shadow"
-    },
-    "breakpoints": {
-        "sm": "px", "md": "px", "lg": "px", "xl": "px"
-    }
-}
-
-Extract actual values from the CSS when possible. Fill in reasonable defaults if not found.`;

@@ -213,6 +213,17 @@ export class UIUXHandler extends BaseHandler {
 
             wsManager.sendFiller(context.projectId, `Generating ${keyScreens.length} screens in parallel...`);
 
+            // Send skeleton loading state to client
+            wsManager.broadcast(context.projectId, {
+                type: "screen_preview_loading",
+                timestamp: new Date().toISOString(),
+                data: {
+                    message: `Generating ${keyScreens.length} screens with ${keyScreens.length * 3} variants...`,
+                    variantCount: keyScreens.length * 3,
+                    screenCount: keyScreens.length
+                }
+            });
+
             // Generate ALL screens in parallel
             await this.generateAllScreensParallel(context, keyScreens);
 
@@ -309,6 +320,16 @@ export class UIUXHandler extends BaseHandler {
             if (uiuxData) {
                 const currentScreen = uiuxData.keyScreens[uiuxData.currentScreenIndex];
                 wsManager.sendFiller(context.projectId, `Regenerating ${currentScreen.name} with your feedback...`);
+
+                // Send skeleton loading state for regeneration
+                wsManager.broadcast(context.projectId, {
+                    type: "screen_preview_loading",
+                    timestamp: new Date().toISOString(),
+                    data: {
+                        message: `Regenerating ${currentScreen.name} with your feedback...`,
+                        variantCount: 3
+                    }
+                });
 
                 const variants = await generateScreenVariants(context, currentScreen, feedback.feedback);
                 uiuxData.screenVariants.push(...variants);

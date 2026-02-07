@@ -8,6 +8,7 @@ import { wsManager } from "../../../websocket/manager";
 import { Mood, MOOD_OPTIONS, MoodOption } from "./types";
 import { callLLMWithLogging, log, safeJSONParse } from "./utils";
 import { getCachedUIUXStage, setCachedUIUXStage, UIUXCacheKey } from "./stageCache";
+import { PROMPTS } from "../../prompts/prompts";
 
 interface MoodRecommendation {
     recommended: Mood;
@@ -42,7 +43,7 @@ export async function analyzeMoodFromContext(context: Context): Promise<MoodReco
         context.projectId,
         'Mood Recommendation',
         [
-            { role: 'system', content: MOOD_RECOMMENDATION_PROMPT },
+            { role: 'system', content: PROMPTS.MOOD_RECOMMENDATION_PROMPT },
             { role: 'user', content: analysisContext }
         ],
         { temperature: 0.7, max_tokens: 1000 }
@@ -155,35 +156,4 @@ ${personas || 'No user personas available.'}
 Based on the above, recommend the most appropriate design mood for this project.`;
 }
 
-// ==========================================
-// PROMPTS
-// ==========================================
 
-const MOOD_RECOMMENDATION_PROMPT = `You are E.L.L.A's UI/UX design expert. Your task is to recommend a design mood based on the project context.
-
-## Available Moods
-1. **minimal** - Clean, focused, lots of white space. Best for: productivity tools, professional apps
-2. **bold** - Strong colors, impactful typography. Best for: startups, creative agencies
-3. **playful** - Fun, colorful, engaging. Best for: consumer apps, games, kids
-4. **corporate** - Professional, trustworthy. Best for: enterprise, finance, healthcare
-5. **futuristic** - Tech-forward, innovative. Best for: AI, tech startups, SaaS
-6. **soft** - Gentle, calming, rounded. Best for: wellness, lifestyle, meditation
-7. **dark** - Dark mode first, dramatic. Best for: developer tools, media, gaming
-8. **luxury** - Premium, sophisticated. Best for: high-end products, fashion
-9. **energetic** - Dynamic, vibrant, animated. Best for: fitness, sports, entertainment
-
-## Analysis Criteria
-Consider:
-- Target audience and their expectations
-- Industry norms and competitor landscape
-- Emotional tone described in the vision
-- Features and functionality (complex UIs often need minimal)
-- Brand personality
-
-## Response Format
-Respond with ONLY valid JSON:
-{
-    "recommended": "<mood_value>",
-    "reasoning": "<2-3 sentences explaining why this mood fits the project>",
-    "alternatives": ["<second_best_mood>", "<third_best_mood>"]
-}`;

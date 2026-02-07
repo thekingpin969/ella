@@ -4,6 +4,7 @@ import { logger } from "../../utils/logger";
 import { llmService } from "../../llm";
 import { SearchResult, ResearchResult } from "./types";
 import * as cheerio from "cheerio";
+import { PROMPTS } from "../../engin/prompts/prompts";
 
 const SERPER_API_KEY = process.env.SERPER_API_KEY || "";
 const MAX_CONTENT_LENGTH = 5000;
@@ -230,7 +231,7 @@ export class WebSearchTool {
             messages: [
                 {
                     role: "system",
-                    content: `You are a research assistant. Synthesize the following search results to answer the query concisely and accurately. Include key facts, relevant details, and cite sources when mentioning specific information.`
+                    content: PROMPTS.WEB_SEARCH_SYNTHESIS_PROMPT
                 },
                 {
                     role: "user",

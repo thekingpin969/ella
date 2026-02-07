@@ -15,6 +15,7 @@ import {
 } from "./types";
 import { callLLMWithLogging, log, safeJSONParse, cleanHTML, cleanCSS } from "./utils";
 import { getCachedUIUXStage, setCachedUIUXStage, UIUXCacheKey } from "./stageCache";
+import { PROMPTS } from "../../prompts/prompts";
 
 interface ScreenFeedbackResult {
     needsRegeneration: boolean;
@@ -55,7 +56,7 @@ export async function identifyKeyScreens(context: Context): Promise<KeyScreen[]>
         context.projectId,
         'Identify Key Screens',
         [
-            { role: 'system', content: KEY_SCREENS_PROMPT },
+            { role: 'system', content: PROMPTS.KEY_SCREENS_PROMPT },
             { role: 'user', content: prdContent.substring(0, 4000) }
         ],
         { temperature: 0.6, max_tokens: 1500 }
@@ -104,7 +105,7 @@ export async function generateSingleVariant(
         context.projectId,
         `Generate ${screen.name} Variant ${variantLabel}`,
         [
-            { role: 'system', content: SCREEN_GENERATION_PROMPT },
+            { role: 'system', content: PROMPTS.SCREEN_GENERATION_PROMPT },
             { role: 'user', content: `${generationContext}\n\nGenerate VARIANT ${variantLabel}.\n${getVariantHint(variantLabel)}` }
         ],
         { temperature: 0.8, max_tokens: 8000 }  // Increased tokens for 3 device designs
@@ -394,113 +395,3 @@ body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; 
 .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
 h1 { font-size: 2rem; margin-bottom: 1rem; }`;
 }
-
-// ==========================================
-// PROMPTS
-// ==========================================
-
-const KEY_SCREENS_PROMPT = `You are E.L.L.A's UI/UX expert. Analyze the PRD and identify the key screens needed for this application.
-
-## Response Format
-Respond with ONLY valid JSON:
-{
-    "screens": [
-        {
-            "type": "dashboard" | "login" | "signup" | "settings" | "profile" | "feed" | "landing" | "product_list" | "product_detail" | "checkout" | "onboarding" | "search" | "notifications" | "chat" | "analytics" | "admin" | "other",
-            "name": "Human-readable screen name",
-            "priority": 1,
-            "description": "Brief description of this screen's purpose",
-            "features": ["feature1", "feature2", "feature3"]
-        }
-    ]
-}
-
-Rules:
-- Identify 2-5 most important screens
-- Order by priority (1 = most important)
-- Focus on unique screens, not variations
-- Include specific features each screen needs`;
-
-const SCREEN_GENERATION_PROMPT = `You are E.L.L.A, an expert UI/UX designer. Generate RESPONSIVE HTML designs for THREE device sizes: Mobile, Tablet, and PC.
-
-## DEVICE SPECIFICATIONS
-
-### MOBILE (Primary - Design First)
-- Viewport: 423px width × 840px height
-- Single column layout
-- Touch-friendly tap targets (min 44px height)
-- Thumb-zone optimized navigation
-- Large readable text (min 16px base)
-
-### TABLET
-- Viewport: 1080px width × 1920px height
-- 2-column layouts where appropriate
-- Touch-friendly but more spacious
-- Side navigation possible
-- Medium density content
-
-### PC/DESKTOP
-- Viewport: 1440px width × 900px height
-- Multi-column layouts (2-4 columns)
-- Hover states and micro-interactions
-- Full navigation bar
-- Higher information density
-- Sidebar navigation where appropriate
-
-## Requirements
-1. Create THREE COMPLETE, SELF-CONTAINED HTML files with embedded <style> tags
-2. Each design must be optimized for its specific viewport
-3. Use modern CSS (flexbox, grid, CSS variables)
-4. Add viewport meta tag: <meta name="viewport" content="width=device-width, initial-scale=1">
-5. Include device-appropriate interactions (touch vs hover)
-6. Use realistic placeholder content (not lorem ipsum)
-7. Follow the specified mood and design preferences consistently across all devices
-
-## Response Format
-Respond with ONLY valid JSON:
-{
-    "mobile": {
-        "html": "<complete HTML with embedded CSS for 423x840 mobile viewport>",
-        "css": "<additional CSS if needed, can be empty string>"
-    },
-    "tablet": {
-        "html": "<complete HTML with embedded CSS for 1080x1920 tablet viewport>",
-        "css": "<additional CSS if needed, can be empty string>"
-    },
-    "pc": {
-        "html": "<complete HTML with embedded CSS for 1440x900 desktop viewport>",
-        "css": "<additional CSS if needed, can be empty string>"
-    },
-    "description": "Brief description of this variant's approach across all devices"
-}
-
-## Design Quality Checklist
-
-### Mobile ✅
-- Width: max-width 423px centered
-- Touch targets: min 44px height
-- Single column layout
-- Bottom navigation preference
-
-### Tablet ✅
-- Width: max-width 1080px centered
-- 2-column layouts where logical
-- Touch-friendly spacing
-- Side or top navigation
-
-### PC ✅
-- Width: max-width 1440px centered
-- Multi-column layouts
-- Hover states for all interactive elements
-- Full navigation with dropdowns
-- Higher content density
-
-### All Devices ✅
-- Consistent color scheme and branding
-- Same design language and mood
-- Readable typography
-- Beautiful gradients or solid colors
-- Consistent border radius
-- Icons represented with emoji or Unicode
-
-IMPORTANT: Each HTML must be complete and render standalone at its target viewport. Include ALL styles in a <style> tag in the <head>. Include the viewport meta tag.`;

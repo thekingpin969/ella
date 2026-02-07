@@ -13,6 +13,7 @@ export type WSMessagetType =
   | "inspiration_gallery"
   | "taste_analysis"
   | "screen_preview"
+  | "screen_preview_loading"
   | "screen2_complete"
   | "log";
 
