@@ -21,6 +21,7 @@ export type EventName =
     | "mood_selected"
     | "inspirations_rated"
     | "screen_feedback"
+    | "refine_components"
     | "complete_screen2"
 
     // Implementation stage

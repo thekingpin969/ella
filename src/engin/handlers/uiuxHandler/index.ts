@@ -18,6 +18,8 @@ import { identifyKeyScreens, generateScreenVariants, generateAllVariantsParallel
 import { extractDesignTokens } from "./designTokens";
 import { generateStyleGuide } from "./styleGuide";
 import { generateScreen2Artifacts } from "./artifacts";
+import { generatePrototype } from "./prototypeGenerator";
+import { refineCommonComponents } from "./componentRefiner";
 
 export class UIUXHandler extends BaseHandler {
 
@@ -37,6 +39,9 @@ export class UIUXHandler extends BaseHandler {
                 break;
             case "screen_feedback":
                 this.onScreenFeedback(context, event);
+                break;
+            case "refine_components":
+                this.onRefineComponents(context, event);
                 break;
             case "complete_screen2":
                 this.onCompleteScreen2(context);
@@ -214,15 +219,8 @@ export class UIUXHandler extends BaseHandler {
             wsManager.sendFiller(context.projectId, `Generating ${keyScreens.length} screens in parallel...`);
 
             // Send skeleton loading state to client
-            wsManager.broadcast(context.projectId, {
-                type: "screen_preview_loading",
-                timestamp: new Date().toISOString(),
-                data: {
-                    message: `Generating ${keyScreens.length} screens with ${keyScreens.length * 3} variants...`,
-                    variantCount: keyScreens.length * 3,
-                    screenCount: keyScreens.length
-                }
-            });
+            // REMOVED: screen_preview_loading - we now send per-variant loading states via variant_slot_reserved
+
 
             // Generate ALL screens in parallel
             await this.generateAllScreensParallel(context, keyScreens);
@@ -243,60 +241,29 @@ export class UIUXHandler extends BaseHandler {
         log(`Starting TRUE parallel generation: ${keyScreens.length} screens × 3 = ${totalVariants} variants`);
 
         try {
-            // Generate ALL variants in TRUE parallel (all N×3 at once)
+            // Generate ALL variants in TRUE parallel
+            // Each variant emits variant_slot_reserved upfront, then screen_preview_single as it completes
             const allVariants = await generateAllVariantsParallel(context, keyScreens);
 
             // Store all variants
             uiuxData.screenVariants.push(...allVariants);
 
-            // Group variants by screen for display
-            const screenGroups = new Map<string, ScreenVariant[]>();
-            allVariants.forEach(v => {
-                const key = v.screenName;
-                if (!screenGroups.has(key)) {
-                    screenGroups.set(key, []);
-                }
-                screenGroups.get(key)!.push(v);
-            });
-
-            // Build screen previews
-            const allScreenPreviews: any[] = [];
-            keyScreens.forEach((screen, index) => {
-                const variants = screenGroups.get(screen.name) || [];
-                if (variants.length > 0) {
-                    allScreenPreviews.push({
-                        screenType: screen.type,
-                        screenName: screen.name,
-                        screenIndex: index + 1,
-                        variants: variants.map((v: ScreenVariant) => ({
-                            id: v.id,
-                            variant: v.variant,
-                            description: v.description,
-                            htmlContent: v.htmlContent,
-                            cssContent: v.cssContent
-                        }))
-                    });
-                }
-            });
-
-            // Send ALL screen previews at once
+            // Send completion message
             wsManager.broadcast(context.projectId, {
-                type: "screen_preview",
+                type: "screen_preview_complete",
                 timestamp: new Date().toISOString(),
                 data: {
-                    mode: "batch",
                     totalScreens: keyScreens.length,
                     totalVariants: allVariants.length,
-                    screens: allScreenPreviews,
-                    message: `🎉 **All ${allScreenPreviews.length} screens generated!** (${allVariants.length} variants total)`
+                    message: `🎉 **All ${keyScreens.length} screens generated!** (${allVariants.length} variants total)`
                 }
             });
 
             wsManager.sendMessage(context.projectId, {
-                message: `✅ Generated **${allScreenPreviews.length} screens** with ${allVariants.length} total variants!\n\nReview the options above and approve your favorites. Once you're happy with all screens, I'll extract the design tokens and create your style guide.`
+                message: `✅ Generated **${keyScreens.length} screens** with ${allVariants.length} total variants!\n\nReview the options above and approve your favorites. Once you're happy with all screens, I'll extract the design tokens and create your style guide.`
             });
 
-            log(`Parallel generation complete: ${allScreenPreviews.length} screens, ${allVariants.length} variants`);
+            log(`Parallel generation complete: ${keyScreens.length} screens, ${allVariants.length} variants`);
 
         } catch (error: any) {
             log(`Error in parallel generation: ${error.message}`);
@@ -310,46 +277,63 @@ export class UIUXHandler extends BaseHandler {
         // Handle nested payload structure from WebSocket
         const payload = event.payload.payload || event.payload;
         const feedback = payload as ScreenFeedback;
+
+        // Fallback: Check for 'variant' property if selectedVariant is missing
+        if (!feedback.selectedVariant && (payload as any).variant) {
+            feedback.selectedVariant = (payload as any).variant;
+        }
+
+        log(`DEBUG FEEDBACK: ${JSON.stringify(feedback, null, 2)}`);
         log(`Screen feedback received: ${feedback.action} for ${feedback.screenType}`);
+
+        // Sanitize selectedVariant
+        if (feedback.selectedVariant) {
+            const match = feedback.selectedVariant.match(/([ABC])/);
+            if (match) {
+                feedback.selectedVariant = match[0] as any;
+            }
+        }
 
         const result = await handleScreenFeedback(context, feedback);
 
         if (result.needsRegeneration) {
-            // Regenerate with feedback
+            // Regenerate with feedback — generateScreenVariants emits screen_preview_single progressively
             const uiuxData = context.planningData?.uiuxData;
             if (uiuxData) {
-                const currentScreen = uiuxData.keyScreens[uiuxData.currentScreenIndex];
-                wsManager.sendFiller(context.projectId, `Regenerating ${currentScreen.name} with your feedback...`);
+                // Find the screen to regenerate based on feedback.screenName
+                // Fallback to current screen if not found (legacy behavior)
+                const targetScreen = uiuxData.keyScreens.find(s => s.name === feedback.screenName)
+                    || uiuxData.keyScreens[uiuxData.currentScreenIndex];
 
-                // Send skeleton loading state for regeneration
-                wsManager.broadcast(context.projectId, {
-                    type: "screen_preview_loading",
-                    timestamp: new Date().toISOString(),
-                    data: {
-                        message: `Regenerating ${currentScreen.name} with your feedback...`,
-                        variantCount: 3
+                if (targetScreen) {
+                    wsManager.sendFiller(context.projectId, `Regenerating ${targetScreen.name} ${feedback.selectedVariant ? `Variant ${feedback.selectedVariant}` : '(All Variants)'} with your feedback...`);
+
+                    if (feedback.action === 'regenerate' && !feedback.selectedVariant) {
+                        log('WARNING: Regeneration requested without selectedVariant. Regenerating ALL variants.');
                     }
-                });
 
-                const variants = await generateScreenVariants(context, currentScreen, feedback.feedback);
-                uiuxData.screenVariants.push(...variants);
+                    const variants = await generateScreenVariants(context, targetScreen, feedback.feedback, feedback.selectedVariant);
 
-                wsManager.broadcast(context.projectId, {
-                    type: "screen_preview",
-                    timestamp: new Date().toISOString(),
-                    data: {
-                        screenType: currentScreen.type,
-                        screenName: currentScreen.name,
-                        variants: variants.map((v: ScreenVariant) => ({
-                            id: v.id,
-                            variant: v.variant,
-                            description: v.description,
-                            htmlContent: v.htmlContent,
-                            cssContent: v.cssContent
-                        })),
-                        message: `Here are new options based on your feedback!`
-                    }
-                });
+                    // Replace existing variants instead of appending
+                    variants.forEach(newVariant => {
+                        const existingIndex = uiuxData.screenVariants.findIndex(v =>
+                            v.screenType === newVariant.screenType &&
+                            v.variant === newVariant.variant
+                        );
+
+                        if (existingIndex !== -1) {
+                            uiuxData.screenVariants[existingIndex] = newVariant;
+                        } else {
+                            uiuxData.screenVariants.push(newVariant);
+                        }
+                    });
+
+                    wsManager.sendMessage(context.projectId, {
+                        message: `✅ Regenerated **${targetScreen.name}** ${feedback.selectedVariant ? `Variant ${feedback.selectedVariant}` : ''}!`
+                    });
+                } else {
+                    log(`Could not find screen to regenerate: ${feedback.screenName}`);
+                }
             }
         } else if (result.moveToNext) {
             // In parallel mode, check if all screens are approved
@@ -389,13 +373,73 @@ export class UIUXHandler extends BaseHandler {
                 message: `✅ ** Design tokens extracted! **\n\nI've captured your color palette, typography, spacing, and component styles. Now generating your complete style guide...`
             });
 
-            // Generate style guide and complete
-            await this.completeScreen2(context);
+            // Generate style guide and move to Prototype Phase
+            // await this.completeScreen2(context); // OLD FLOW
+            await this.startPrototypePhase(context); // NEW FLOW
 
         } catch (error: any) {
             log(`Error extracting tokens: ${error.message}`);
             wsManager.sendMessage(context.projectId, {
                 message: `❌ Error extracting design tokens: ${error.message}`
+            });
+        }
+    }
+
+    // ==========================================
+    // PHASE 5.5: PROTOTYPE & REFINEMENT
+    // ==========================================
+
+    private async startPrototypePhase(context: Context): Promise<void> {
+        wsManager.sendFiller(context.projectId, 'Assembling interactive prototype...');
+
+        try {
+            const prototypeHTML = await generatePrototype(context);
+
+            wsManager.broadcast(context.projectId, {
+                type: "prototype_ready",
+                timestamp: new Date().toISOString(),
+                data: {
+                    message: `🚀 **Prototype Ready!**\n\nI've assembled your screens into an interactive prototype. You can now:\n1. **Refine Components**: Make global changes (e.g., "Make navbar dark")\n2. **Complete Design**: Finalize Screen 2`,
+                    url: 'design/prototype.html',
+                    htmlContent: prototypeHTML
+                }
+            });
+
+            if (context.planningData?.uiuxData) {
+                context.planningData.uiuxData.currentPhase = 'prototype';
+            }
+
+        } catch (error: any) {
+            log(`Error generating prototype: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `⚠️ Error generating prototype: ${error.message}. You can still complete the stage.`
+            });
+        }
+    }
+
+    private async onRefineComponents(context: Context, event: Event): Promise<void> {
+        const payload = event.payload.payload || event.payload;
+        const instructions = payload.instructions;
+
+        if (!instructions) {
+            wsManager.sendMessage(context.projectId, { message: "❌ No refinement instructions provided." });
+            return;
+        }
+
+        try {
+            if (context.planningData?.uiuxData) {
+                context.planningData.uiuxData.currentPhase = 'refinement';
+            }
+
+            await refineCommonComponents(context, instructions);
+
+            // Re-generate prototype with updates
+            await this.startPrototypePhase(context);
+
+        } catch (error: any) {
+            log(`Error refining components: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error during refinement: ${error.message}`
             });
         }
     }

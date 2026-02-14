@@ -145,7 +145,7 @@ export type ScreenType =
     | 'other';
 
 export type ScreenVariantLabel = 'A' | 'B' | 'C';
-export type ScreenStatus = 'pending' | 'approved' | 'rejected' | 'mixed';
+export type ScreenStatus = 'pending' | 'generated' | 'approved' | 'rejected' | 'mixed';
 
 export interface KeyScreen {
     type: ScreenType;
@@ -155,8 +155,31 @@ export interface KeyScreen {
     features: string[];
 }
 
+export interface ScreenDesignBrief {
+    screenName: string;
+    screenType: ScreenType;
+    layout: {
+        structure: string;
+        headerType: string;
+        navigationStyle: string;
+        contentZones: string[];
+    };
+    components: Array<{
+        name: string;
+        description: string;
+        placement: string;
+    }>;
+    content: {
+        headings: string[];
+        labels: string[];
+        sampleData: string[];
+    };
+    designNotes: string;
+}
+
 export interface ScreenVariant {
     id: string;
+    slotId?: string; // Stable slot identifier for UI positioning
     screenType: ScreenType;
     screenName: string;
     variant: ScreenVariantLabel;
@@ -171,6 +194,7 @@ export interface ScreenVariant {
 
 export interface ScreenFeedback {
     screenType: ScreenType;
+    screenName?: string; // Optional: target specific screen by name (if multiple screens of same type)
     action: 'approve' | 'reject_all' | 'mix' | 'regenerate';
     selectedVariant?: ScreenVariantLabel;
     mixInstructions?: string;
@@ -278,7 +302,7 @@ export interface DesignTokens {
 
 export interface UIUXData {
     // Phase tracking
-    currentPhase: 'mood' | 'inspiration' | 'screens' | 'tokens' | 'complete';
+    currentPhase: 'mood' | 'inspiration' | 'screens' | 'tokens' | 'prototype' | 'refinement' | 'complete';
 
     // Mood
     mood?: Mood;
@@ -299,8 +323,29 @@ export interface UIUXData {
     // Design System
     designTokens?: DesignTokens;
 
+    // New stages
+    prototypeData?: PrototypeData;
+    refinementData?: RefinementData;
+
     // Progress
     confidenceScore: number;
+}
+
+export interface PrototypeData {
+    url: string; // Path to prototype.html
+    structure: any; // Navigation structure
+    status: 'pending' | 'generated' | 'error';
+}
+
+export interface RefinementData {
+    commonComponents: string[]; // e.g. ['navbar', 'footer']
+    history: RefinementAction[];
+}
+
+export interface RefinementAction {
+    timestamp: string;
+    instruction: string;
+    affectedComponents: string[];
 }
 
 // ==========================================
@@ -338,4 +383,8 @@ export function generateInspirationId(): string {
 
 export function generateScreenVariantId(): string {
     return `screen_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export function generateSlotId(): string {
+    return `slot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }

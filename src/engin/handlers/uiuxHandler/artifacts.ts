@@ -60,7 +60,29 @@ export async function generateScreen2Artifacts(context: Context): Promise<void> 
             content: JSON.stringify(inspirationGallery, null, 2)
         });
 
-        // 4. Approved Screens (HTML files)
+        // 3.5 Prototype
+        if (uiuxData.prototypeData) {
+            artifacts.push({
+                path: 'design/prototype.html',
+                content: await fsManager.readFile(context.projectId, 'design/prototype.html') || ''
+            });
+
+            // Also include the individual screens used by the prototype
+            // We assume they are in design/screens/
+            const approvedVariants = uiuxData.screenVariants.filter(v => v.status === 'approved');
+            for (const variant of approvedVariants) {
+                const screenPath = `design/screens/${variant.screenType}.html`;
+                const content = await fsManager.readFile(context.projectId, screenPath);
+                if (content) {
+                    artifacts.push({
+                        path: screenPath,
+                        content
+                    });
+                }
+            }
+        }
+
+        // 4. Approved Screens (Stand-alone previews)
         const approvedVariants = uiuxData.screenVariants.filter(v => v.status === 'approved');
         for (const variant of approvedVariants) {
             const filename = `${variant.screenType.toLowerCase().replace(/\s+/g, '-')}.html`;

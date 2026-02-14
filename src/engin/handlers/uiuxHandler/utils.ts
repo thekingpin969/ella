@@ -84,18 +84,99 @@ export function sleep(ms: number): Promise<void> {
 
 /**
  * Parse JSON safely with fallback
+ * Handles various LLM output formats including reasoning content
  */
 export function safeJSONParse<T>(str: string, fallback: T): T {
     try {
-        // Try to extract JSON from markdown code blocks
+        // First, try to extract JSON from markdown code blocks
         const jsonMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (jsonMatch) {
-            return JSON.parse(jsonMatch[1]);
+            const parsed = JSON.parse(jsonMatch[1]);
+            log(`Successfully parsed JSON from code block`);
+            return parsed;
         }
-        return JSON.parse(str);
-    } catch {
+
+        // Try direct parse (clean JSON)
+        try {
+            return JSON.parse(str);
+        } catch {
+            // Continue to other extraction methods
+        }
+
+        // Try to find JSON object/array in the response (handles reasoning before/after JSON)
+        // Look for JSON object pattern
+        const jsonObjectMatch = str.match(/\{[\s\S]*\}/);
+        if (jsonObjectMatch) {
+            // Find the outermost balanced braces
+            const jsonStr = extractBalancedJson(str, '{', '}');
+            if (jsonStr) {
+                const parsed = JSON.parse(jsonStr);
+                log(`Successfully extracted JSON object from response`);
+                return parsed;
+            }
+        }
+
+        // Look for JSON array pattern
+        const jsonArrayMatch = str.match(/\[[\s\S]*\]/);
+        if (jsonArrayMatch) {
+            const jsonStr = extractBalancedJson(str, '[', ']');
+            if (jsonStr) {
+                const parsed = JSON.parse(jsonStr);
+                log(`Successfully extracted JSON array from response`);
+                return parsed;
+            }
+        }
+
+        log(`Failed to parse JSON from response, using fallback`);
+        return fallback;
+    } catch (error: any) {
+        log(`JSON parse error: ${error.message}`);
         return fallback;
     }
+}
+
+/**
+ * Extract balanced JSON from a string by finding matching open/close brackets
+ */
+function extractBalancedJson(str: string, open: string, close: string): string | null {
+    const startIndex = str.indexOf(open);
+    if (startIndex === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = startIndex; i < str.length; i++) {
+        const char = str[i];
+
+        if (escape) {
+            escape = false;
+            continue;
+        }
+
+        if (char === '\\' && inString) {
+            escape = true;
+            continue;
+        }
+
+        if (char === '"' && !escape) {
+            inString = !inString;
+            continue;
+        }
+
+        if (!inString) {
+            if (char === open) {
+                depth++;
+            } else if (char === close) {
+                depth--;
+                if (depth === 0) {
+                    return str.substring(startIndex, i + 1);
+                }
+            }
+        }
+    }
+
+    return null;
 }
 
 /**

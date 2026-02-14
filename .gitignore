@@ -37,3 +37,6 @@ websocket-test-client.html
 docs
 workspace/*
 bmad
+.*
+.claude
+.agent
