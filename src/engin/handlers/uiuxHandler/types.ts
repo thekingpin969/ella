@@ -121,7 +121,7 @@ export interface ResponsiveContent {
 
 export interface DeviceScreens {
     mobile: ResponsiveContent;   // 423×840 viewport
-    tablet: ResponsiveContent;   // 1080×1920 viewport
+    tablet: ResponsiveContent;   // 768×1024 viewport
     pc: ResponsiveContent;       // 1440×900 viewport
 }
 

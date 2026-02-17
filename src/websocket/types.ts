@@ -17,6 +17,8 @@ export type WSMessagetType =
   | "screen_preview_complete"
   | "screen_preview_loading"
   | "variant_slot_reserved"
+  | "variant_chat_response"
+  | "variant_updated"
   | "prototype_ready"
   | "screen2_complete"
   | "log";

@@ -40,6 +40,9 @@ export class UIUXHandler extends BaseHandler {
             case "screen_feedback":
                 this.onScreenFeedback(context, event);
                 break;
+            case "variant_chat":
+                this.onVariantChat(context, event);
+                break;
             case "refine_components":
                 this.onRefineComponents(context, event);
                 break;
@@ -245,8 +248,18 @@ export class UIUXHandler extends BaseHandler {
             // Each variant emits variant_slot_reserved upfront, then screen_preview_single as it completes
             const allVariants = await generateAllVariantsParallel(context, keyScreens);
 
-            // Store all variants
-            uiuxData.screenVariants.push(...allVariants);
+            // Store all variants (dedup by screenName + variant to prevent cache-hit duplication)
+            allVariants.forEach(newVariant => {
+                const existingIndex = uiuxData.screenVariants.findIndex(v =>
+                    v.screenName === newVariant.screenName &&
+                    v.variant === newVariant.variant
+                );
+                if (existingIndex !== -1) {
+                    uiuxData.screenVariants[existingIndex] = newVariant;
+                } else {
+                    uiuxData.screenVariants.push(newVariant);
+                }
+            });
 
             // Send completion message
             wsManager.broadcast(context.projectId, {
@@ -317,7 +330,7 @@ export class UIUXHandler extends BaseHandler {
                     // Replace existing variants instead of appending
                     variants.forEach(newVariant => {
                         const existingIndex = uiuxData.screenVariants.findIndex(v =>
-                            v.screenType === newVariant.screenType &&
+                            v.screenName === newVariant.screenName &&
                             v.variant === newVariant.variant
                         );
 
@@ -413,6 +426,198 @@ export class UIUXHandler extends BaseHandler {
             log(`Error generating prototype: ${error.message}`);
             wsManager.sendMessage(context.projectId, {
                 message: `⚠️ Error generating prototype: ${error.message}. You can still complete the stage.`
+            });
+        }
+    }
+
+    // ==========================================
+    // VARIANT CHAT - Contextual LLM Discussion
+    // ==========================================
+
+    private async onVariantChat(context: Context, event: Event): Promise<void> {
+        const payload = event.payload.payload || event.payload;
+        let { screenName, variant, message, mode } = payload;
+
+        // Default to 'ask' if mode is not specified (backwards compatibility)
+        if (!mode) {
+            mode = 'ask';
+            log(`[Warning] No mode specified, defaulting to 'ask' mode`);
+        }
+
+        if (!message || !screenName || !variant) {
+            wsManager.sendMessage(context.projectId, {
+                message: "❌ Missing required fields for variant chat."
+            });
+            return;
+        }
+
+        const uiuxData = context.planningData?.uiuxData;
+        if (!uiuxData) {
+            wsManager.sendMessage(context.projectId, {
+                message: "❌ UI/UX data not initialized."
+            });
+            return;
+        }
+
+        // Find the specific variant
+        const targetVariant = uiuxData.screenVariants.find(
+            v => v.screenName === screenName && v.variant === variant
+        );
+
+        if (!targetVariant) {
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Variant ${variant} not found for ${screenName}.`
+            });
+            return;
+        }
+
+        log(`Variant chat [${mode}]: ${screenName} ${variant} - "${message}"`);
+
+        try {
+            // Import LLM utility
+            const { callLLMWithLogging, safeJSONParse } = await import("./utils");
+
+            // Handle based on mode
+            if (mode === 'edit') {
+                // EDIT MODE: Generate modified HTML
+                wsManager.sendFiller(context.projectId, 'Applying your changes...');
+
+                const editPrompt = `You are an expert UI/UX developer. The user has requested a change to a screen variant.
+
+**Current HTML:**
+\`\`\`html
+${targetVariant.htmlContent}
+\`\`\`
+
+**User's requested change:** "${message}"
+
+Generate the MODIFIED HTML with the change applied. Respond with JSON:
+{
+  "html": "<complete modified HTML>",
+  "description": "Brief description of what was changed"
+}
+
+**Rules:**
+- Keep the overall structure and responsive design intact
+- Only modify what the user requested
+- Ensure valid, complete HTML
+- Maintain existing styles unless specifically asked to change them
+- Keep the design consistent with the original mood and aesthetic`;
+
+                const response = await callLLMWithLogging(
+                    context.projectId,
+                    `Variant Edit: ${screenName} ${variant}`,
+                    [
+                        { role: 'system', content: 'You are an expert UI/UX developer who modifies HTML based on user requests.' },
+                        { role: 'user', content: editPrompt }
+                    ],
+                    { temperature: 0.7, max_tokens: 16000 }
+                );
+
+                // Parse LLM response
+                const result = safeJSONParse<{ html: string; description: string }>(response.content, {
+                    html: targetVariant.htmlContent, // Fallback to original
+                    description: 'Failed to parse changes'
+                });
+
+                // Validate that we got HTML
+                if (!result.html || result.html.length < 50) {
+                    wsManager.sendMessage(context.projectId, {
+                        message: `❌ Failed to generate valid HTML. Please try rephrasing your request.`
+                    });
+                    return;
+                }
+
+                // Update variant in memory
+                targetVariant.htmlContent = result.html;
+                targetVariant.description = result.description;
+                targetVariant.deviceScreens = {
+                    mobile: { htmlContent: result.html, cssContent: '' },
+                    tablet: { htmlContent: result.html, cssContent: '' },
+                    pc: { htmlContent: result.html, cssContent: '' }
+                };
+
+                // Update variant in cache
+                const { setCachedUIUXStage, UIUXCacheKey } = await import("./stageCache");
+                setCachedUIUXStage(context, UIUXCacheKey.SCREEN_VARIANTS, uiuxData.screenVariants);
+
+                log(`✅ Updated ${screenName} Variant ${variant} in memory + cache`);
+
+                // Broadcast update to client
+                wsManager.broadcast(context.projectId, {
+                    type: "variant_updated",
+                    timestamp: new Date().toISOString(),
+                    data: {
+                        screenName,
+                        variant,
+                        htmlContent: result.html,
+                        description: result.description
+                    }
+                });
+
+                // Also send confirmation message
+                wsManager.sendMessage(context.projectId, {
+                    message: `✅ **Updated!** ${result.description}`
+                });
+
+                log(`Variant update broadcast for ${screenName} ${variant}`);
+
+            } else {
+                // ASK MODE: Conversational response (original behavior)
+                wsManager.sendFiller(context.projectId, 'Analyzing variant...');
+
+                const systemPrompt = `You are an expert UI/UX designer discussing a specific screen variant with a user.
+
+The user is viewing and discussing:
+- Screen: ${screenName}
+- Variant: ${variant}
+- Description: ${targetVariant.description}
+
+Your role is to:
+1. Answer questions about the current design
+2. Provide insights on visual hierarchy, colors, layout, accessibility
+3. Suggest modifications when requested
+4. Help the user refine this specific variant
+
+Be specific, actionable, and reference the actual HTML/CSS when relevant.`;
+
+                const variantContext = `# Current Variant HTML
+\`\`\`html
+${targetVariant.htmlContent}
+\`\`\`
+
+# User Question/Request
+${message}`;
+
+                const response = await callLLMWithLogging(
+                    context.projectId,
+                    `Variant Chat: ${screenName} ${variant}`,
+                    [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: variantContext }
+                    ],
+                    { temperature: 0.7, max_tokens: 2000 }
+                );
+
+                // Send response back to client
+                wsManager.broadcast(context.projectId, {
+                    type: "variant_chat_response",
+                    timestamp: new Date().toISOString(),
+                    data: {
+                        screenName,
+                        variant,
+                        message: response.content,
+                        role: 'assistant'
+                    }
+                });
+
+                log(`Variant chat response sent for ${screenName} ${variant}`);
+            }
+
+        } catch (error: any) {
+            log(`Error in variant chat: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error: ${error.message}`
             });
         }
     }

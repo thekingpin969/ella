@@ -5,6 +5,7 @@ import { createBunWebSocket } from "hono/bun";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "./src/utils/logger";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/bun";
 import projectRoutes from "./src/routes/projects";
 import cacheRoutes from "./src/routes/cache";
 import { wsManager } from "./src/websocket/manager";
@@ -20,6 +21,9 @@ const { upgradeWebSocket, websocket } = createBunWebSocket<any>();
 // Middleware
 app.use("*", honoLogger());
 app.use("*", cors());
+
+// Serve static files from test directory
+app.use('/test/*', serveStatic({ root: './' }));
 
 // await authorize()
 
@@ -52,6 +56,7 @@ app.get(
           'mood_selected',
           'inspirations_rated',
           'screen_feedback',
+          'variant_chat',
           'complete_screen2'
         ];
 

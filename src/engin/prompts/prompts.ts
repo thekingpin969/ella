@@ -1574,7 +1574,7 @@ Rules:
 - Large readable text (min 16px base)
 
 ### TABLET
-- Viewport: 1080px width × 1920px height
+- Viewport: 768px width × 1024px height
 - 2-column layouts where appropriate
 - Touch-friendly but more spacious
 - Side navigation possible
@@ -1605,7 +1605,7 @@ Respond with ONLY valid JSON:
         "css": "<additional CSS if needed, can be empty string>"
     },
     "tablet": {
-        "html": "<complete HTML with embedded CSS for 1080x1920 tablet viewport>",
+        "html": "<complete HTML with embedded CSS for 768x1024 tablet viewport>",
         "css": "<additional CSS if needed, can be empty string>"
     },
     "pc": {
@@ -1624,7 +1624,7 @@ Respond with ONLY valid JSON:
 - Bottom navigation preference
 
 ### Tablet ✅
-- Width: max-width 1080px centered
+- Width: max-width 768px centered
 - 2-column layouts where logical
 - Touch-friendly spacing
 - Side or top navigation
@@ -1860,8 +1860,8 @@ Generate ONE complete, self-contained HTML file with:
 - All styles in a \`<style>\` tag in the \`<head>\`
 - CSS media queries for THREE viewports:
   - Mobile: max-width 480px (single column, bottom nav, touch-friendly)
-  - Tablet: 481px to 1080px (2-column where appropriate, side/top nav)
-  - Desktop: 1081px+ (multi-column, full nav, hover states)
+  - Tablet: 481px to 768px (2-column where appropriate, side/top nav)
+  - Desktop: 769px+ (multi-column, full nav, hover states)
 - Viewport meta tag: \`<meta name="viewport" content="width=device-width, initial-scale=1">\`
 - Modern CSS: flexbox, grid, CSS custom properties (\`:root\` variables)
 - Realistic content from the brief (NOT lorem ipsum)
@@ -1893,5 +1893,5 @@ Respond with ONLY valid JSON:
 - ✅ Consistent border radius and spacing
 - ✅ Readable typography at all sizes
 
-IMPORTANT: The HTML must render beautifully at 423px, 1080px, and 1440px widths. Include ALL styles inline in the \`<style>\` tag.`
+IMPORTANT: The HTML must render beautifully at 423px, 768px, and 1440px widths. Include ALL styles inline in the \`<style>\` tag.`
 } as const
