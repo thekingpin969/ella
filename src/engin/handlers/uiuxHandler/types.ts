@@ -144,7 +144,7 @@ export type ScreenType =
     | 'admin'
     | 'other';
 
-export type ScreenVariantLabel = 'A' | 'B' | 'C';
+export type ScreenVariantLabel = string;
 export type ScreenStatus = 'pending' | 'generated' | 'approved' | 'rejected' | 'mixed';
 
 export interface KeyScreen {
@@ -175,6 +175,29 @@ export interface ScreenDesignBrief {
         sampleData: string[];
     };
     designNotes: string;
+}
+
+// ==========================================
+// VARIANT DESIGN PROMPT TYPES (Phase 2)
+// ==========================================
+
+export interface ComponentDesignSpec {
+    name: string;                           // e.g. "Stat Card"
+    htmlStructure: string;                  // e.g. "div.stat-card > h3.label + p.value + span.change"
+    cssDirectives: string;                  // e.g. "rounded-lg, shadow-md, bg: surface color, padding: lg"
+    interactionNotes?: string;              // e.g. "hover: lift shadow, subtle scale"
+}
+
+export interface VariantDesignPrompt {
+    screenName: string;
+    screenType: ScreenType;
+    variant: ScreenVariantLabel;
+    layoutStrategy: string;                 // e.g. "Sidebar + main content, 3-column grid for cards"
+    componentSpecs: ComponentDesignSpec[];   // Detailed spec for each component
+    colorDirectives: string;                // e.g. "Primary #6366f1, background #0f172a, surface #1e293b"
+    typographyDirectives: string;           // e.g. "Headings: Inter Bold 2xl, Body: Inter Regular base"
+    spacingNotes: string;                   // e.g. "Generous whitespace, section gaps 2xl"
+    overallNotes: string;                   // Variant personality applied to the whole page
 }
 
 export interface ScreenVariant {

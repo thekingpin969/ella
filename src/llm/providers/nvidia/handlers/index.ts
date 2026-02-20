@@ -3,6 +3,7 @@ import { ModelHandler } from "../types";
 import { openaiHandler } from "./openaiHandler";
 import { minimaxHandler } from "./minimaxHandler";
 import { glmHandler } from "./glmHandler";
+import { kimiHandler } from "./kimiHandler";
 
 /**
  * Registry of all available model handlers
@@ -11,6 +12,7 @@ import { glmHandler } from "./glmHandler";
 export const modelHandlers: ModelHandler[] = [
     minimaxHandler,
     glmHandler,
+    kimiHandler,
     openaiHandler, // OpenAI handler is last as fallback
 ];
 
@@ -31,4 +33,4 @@ export function getHandler(model: string): ModelHandler {
     return openaiHandler;
 }
 
-export { openaiHandler, minimaxHandler, glmHandler };
+export { openaiHandler, minimaxHandler, glmHandler, kimiHandler };

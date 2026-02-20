@@ -1,5 +1,5 @@
 // uiuxHandler/screenGenerator.ts
-// Two-phase screen generation: Design Brief → Responsive HTML
+// Three-phase screen generation: Design Brief → Variant Design Prompt → Responsive HTML
 
 import { Context } from "../../types/context";
 import { fsManager } from "../../../fs";
@@ -11,6 +11,8 @@ import {
     ScreenFeedback,
     ScreenType,
     ScreenDesignBrief,
+    VariantDesignPrompt,
+    ComponentDesignSpec,
     DeviceScreens,
     generateScreenVariantId
 } from "./types";
@@ -185,18 +187,134 @@ export async function generateAllBriefs(
 }
 
 // ==========================================
-// PHASE 2: RESPONSIVE HTML GENERATION
+// PHASE 2: VARIANT DESIGN PROMPT GENERATION
 // ==========================================
 
 /**
- * Generate a SINGLE variant using a design brief
+ * Generate a variant-specific design prompt from a brief
+ * The design prompt contains explicit styling decisions for every component
+ * @param userDescription Optional free-text from user describing how this variant should differ
+ */
+export async function generateDesignPromptForVariant(
+    context: Context,
+    screen: KeyScreen,
+    brief: ScreenDesignBrief,
+    variantLabel: string,
+    userDescription?: string
+): Promise<VariantDesignPrompt> {
+    log(`Generating design prompt for: ${screen.name} Variant ${variantLabel}${userDescription ? ' (user-directed)' : ''}`);
+    wsManager.sendLog(context.projectId, `📐 Generating design prompt: ${screen.name} Variant ${variantLabel}...`);
+
+    const userPrompt = buildDesignPromptInput(context, brief, variantLabel, userDescription);
+
+    const response = await callLLMWithLogging(
+        context.projectId,
+        `Design Prompt: ${screen.name} Variant ${variantLabel}`,
+        [
+            { role: 'system', content: PROMPTS.VARIANT_DESIGN_PROMPT },
+            { role: 'user', content: userPrompt }
+        ],
+        { temperature: 0.7, max_tokens: 4000 }
+    );
+
+    const designPrompt = safeJSONParse<VariantDesignPrompt>(response.content, {
+        screenName: screen.name,
+        screenType: screen.type,
+        variant: variantLabel,
+        layoutStrategy: brief.layout?.structure || 'Standard layout',
+        componentSpecs: (Array.isArray(brief.components) ? brief.components : []).map(c => ({
+            name: c.name,
+            htmlStructure: (c as any).htmlStructure || `div.${c.name.toLowerCase().replace(/\s+/g, '-')}`,
+            cssDirectives: (c as any).cssDirection || 'padding: 16px; border-radius: 8px;',
+            interactionNotes: 'hover: subtle highlight'
+        })),
+        colorDirectives: 'Primary: #6366f1, Background: #0f172a, Surface: #1e293b, Text: #f8fafc',
+        typographyDirectives: 'Font: system-ui. Headings: 600 weight. Body: 400 weight, 1rem.',
+        spacingNotes: 'Standard spacing: 16px gaps, 24px section padding.',
+        overallNotes: `Variant ${variantLabel} for ${screen.name}`
+    });
+
+    log(`Design prompt generated for: ${screen.name} Variant ${variantLabel} (${designPrompt.componentSpecs?.length || 0} component specs)`);
+    return designPrompt;
+}
+
+/**
+ * Generate design prompts for all screens in parallel (1 per screen — variant A only)
+ * Returns a Map keyed by "ScreenName_A" (e.g. "Dashboard_A")
+ */
+export async function generateAllDesignPrompts(
+    context: Context,
+    briefMap: Map<string, ScreenDesignBrief>,
+    screens: KeyScreen[]
+): Promise<Map<string, VariantDesignPrompt>> {
+    // Check cache first
+    const cached = getCachedUIUXStage<Record<string, VariantDesignPrompt>>(context, UIUXCacheKey.DESIGN_PROMPTS);
+    if (cached) {
+        log(`Using cached design prompts (${Object.keys(cached).length} prompts)`);
+        const promptMap = new Map<string, VariantDesignPrompt>();
+        for (const [key, value] of Object.entries(cached)) {
+            promptMap.set(key, value);
+        }
+        return promptMap;
+    }
+
+    const totalPrompts = screens.length;
+    log(`Generating ${totalPrompts} design prompts in parallel (1 per screen)...`);
+    wsManager.sendLog(context.projectId, `📐 Phase 2: Generating ${totalPrompts} design prompts in parallel...`);
+
+    // One design prompt per screen (variant A only)
+    const tasks: Array<{ screen: KeyScreen; brief: ScreenDesignBrief }> = [];
+    screens.forEach(screen => {
+        const brief = briefMap.get(screen.name);
+        if (brief) {
+            tasks.push({ screen, brief });
+        }
+    });
+
+    const results = await Promise.all(
+        tasks.map(async (task) => {
+            try {
+                const designPrompt = await generateDesignPromptForVariant(
+                    context, task.screen, task.brief, 'A'
+                );
+                const key = `${task.screen.name}_A`;
+                return { success: true, key, designPrompt };
+            } catch (error: any) {
+                log(`Error generating design prompt for ${task.screen.name}: ${error.message}`);
+                return { success: false, key: `${task.screen.name}_A`, designPrompt: null };
+            }
+        })
+    );
+
+    const promptMap = new Map<string, VariantDesignPrompt>();
+    for (const result of results) {
+        if (result.success && result.designPrompt) {
+            promptMap.set(result.key, result.designPrompt);
+        }
+    }
+
+    // Cache the design prompts
+    const cacheObj: Record<string, VariantDesignPrompt> = {};
+    promptMap.forEach((v, k) => { cacheObj[k] = v; });
+    setCachedUIUXStage(context, UIUXCacheKey.DESIGN_PROMPTS, cacheObj);
+
+    log(`Generated ${promptMap.size}/${totalPrompts} design prompts`);
+    return promptMap;
+}
+
+// ==========================================
+// PHASE 3: RESPONSIVE HTML GENERATION
+// ==========================================
+
+/**
+ * Generate a SINGLE variant using a variant design prompt
  * Produces ONE responsive HTML file with media queries → assigned to all device slots
  */
 export async function generateSingleVariant(
     context: Context,
     screen: KeyScreen,
-    variantLabel: 'A' | 'B' | 'C',
-    brief: ScreenDesignBrief,
+    variantLabel: string,
+    designPrompt: VariantDesignPrompt,
     feedbackHint?: string,
     slotId?: string
 ): Promise<ScreenVariant> {
@@ -208,8 +326,8 @@ export async function generateSingleVariant(
         throw new Error('UIUXData not initialized');
     }
 
-    // Build user prompt with brief + variant hint + feedback
-    const userPrompt = buildVariantPrompt(context, brief, variantLabel, feedbackHint);
+    // Build user prompt from the design prompt
+    const userPrompt = buildHTMLPromptFromDesignPrompt(designPrompt, feedbackHint);
 
     const response = await callLLMWithLogging(
         context.projectId,
@@ -321,33 +439,36 @@ export async function generateAllVariantsParallel(
     wsManager.sendLog(context.projectId, `📋 Phase 1: Generating design briefs for ${screens.length} screens...`);
     const briefMap = await generateAllBriefs(context, screens);
 
-    // ── Phase 2: Generate all variants in parallel using briefs ──
-    const totalVariants = screens.length * 3;
-    log(`Phase 2: Generating ${totalVariants} responsive HTML variants in parallel...`);
-    wsManager.sendLog(context.projectId, `⚡ Phase 2: Generating ${totalVariants} variants in parallel...`);
+    // ── Phase 2: Generate design prompts in parallel (1 per screen) ──
+    wsManager.sendLog(context.projectId, `📐 Phase 2: Generating ${screens.length} design prompts...`);
+    const designPromptMap = await generateAllDesignPrompts(context, briefMap, screens);
 
-    // Flatten all screen+variant combinations and PRE-ASSIGN slot IDs
+    // ── Phase 3: Generate HTML variants in parallel (1 per screen) ──
+    const totalVariants = screens.length;
+    log(`Phase 3: Generating ${totalVariants} responsive HTML variants in parallel...`);
+    wsManager.sendLog(context.projectId, `⚡ Phase 3: Generating ${totalVariants} screen designs in parallel...`);
+
+    // One variant per screen (variant A), PRE-ASSIGN slot IDs
     const allTasks: Array<{
         screen: KeyScreen;
-        variant: 'A' | 'B' | 'C';
-        brief: ScreenDesignBrief;
+        variant: string;
+        designPrompt: VariantDesignPrompt;
         slotId: string;
         slotIndex: number;
     }> = [];
 
     let slotIndex = 0;
     screens.forEach((screen) => {
-        const brief = briefMap.get(screen.name);
-        if (brief) {
-            (['A', 'B', 'C'] as const).forEach((variant) => {
-                const { generateSlotId } = require('./types');
-                allTasks.push({
-                    screen,
-                    variant,
-                    brief,
-                    slotId: generateSlotId(),
-                    slotIndex: slotIndex++
-                });
+        const key = `${screen.name}_A`;
+        const designPrompt = designPromptMap.get(key);
+        if (designPrompt) {
+            const { generateSlotId } = require('./types');
+            allTasks.push({
+                screen,
+                variant: 'A',
+                designPrompt,
+                slotId: generateSlotId(),
+                slotIndex: slotIndex++
             });
         }
     });
@@ -392,7 +513,7 @@ export async function generateAllVariantsParallel(
                     }
 
                     const variant = await generateSingleVariant(
-                        context, task.screen, task.variant, task.brief, feedbackHint, task.slotId
+                        context, task.screen, task.variant, task.designPrompt, feedbackHint, task.slotId
                     );
 
                     completedCount++;
@@ -472,17 +593,31 @@ export async function generateScreenVariants(
     context: Context,
     screen: KeyScreen,
     feedbackHint?: string,
-    specificVariant?: 'A' | 'B' | 'C'
+    specificVariant?: string
 ): Promise<ScreenVariant[]> {
     log(`Regenerating variants for: ${screen.name} ${specificVariant ? `(Variant ${specificVariant})` : '(All Variants)'}`);
 
     // Generate a fresh brief for the screen
     const brief = await generateDesignBrief(context, screen);
 
-    const variantLabels: Array<'A' | 'B' | 'C'> = specificVariant ? [specificVariant] : ['A', 'B', 'C'];
+    const variantLabels: string[] = specificVariant ? [specificVariant] : ['A'];
     const totalVariants = variantLabels.length;
     let completedCount = 0;
     const MAX_RETRIES = 2;
+
+    // Generate design prompts for the variants being regenerated
+    log(`Generating ${variantLabels.length} design prompt(s) for regeneration...`);
+    const designPrompts = new Map<string, VariantDesignPrompt>();
+    await Promise.all(
+        variantLabels.map(async (variantLabel) => {
+            try {
+                const dp = await generateDesignPromptForVariant(context, screen, brief, variantLabel);
+                designPrompts.set(variantLabel, dp);
+            } catch (error: any) {
+                log(`Error generating design prompt for ${screen.name} ${variantLabel}: ${error.message}`);
+            }
+        })
+    );
 
     // Pre-assign slot IDs for regeneration
     const { generateSlotId } = require('./types');
@@ -491,6 +626,7 @@ export async function generateScreenVariants(
         const slotIndex = ['A', 'B', 'C'].indexOf(variantLabel);
         return {
             variantLabel,
+            designPrompt: designPrompts.get(variantLabel),
             slotId: generateSlotId(),
             slotIndex
         };
@@ -517,9 +653,14 @@ export async function generateScreenVariants(
         });
     });
 
-    // Generate all 3 variants in parallel — emit each as it completes
+    // Generate all variants in parallel — emit each as it completes
     const results = await Promise.all(
         tasks.map(async (task) => {
+            if (!task.designPrompt) {
+                log(`❌ No design prompt for ${screen.name} ${task.variantLabel}, skipping`);
+                return { success: false, variant: null };
+            }
+
             let lastError: any = null;
 
             for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -530,7 +671,7 @@ export async function generateScreenVariants(
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     }
 
-                    const variant = await generateSingleVariant(context, screen, task.variantLabel, brief, feedbackHint, task.slotId);
+                    const variant = await generateSingleVariant(context, screen, task.variantLabel, task.designPrompt, feedbackHint, task.slotId);
 
                     completedCount++;
                     log(`✅ Completed ${screen.name} Variant ${task.variantLabel} (${completedCount}/${totalVariants})`);
@@ -592,6 +733,115 @@ export async function generateScreenVariants(
 
     log(`Generated ${variants.length}/${totalVariants} variants for ${screen.name}`);
     return variants;
+}
+
+/**
+ * Generate a single on-demand variant for a screen, driven by user description.
+ * Called when user clicks "New Variant" in the canvas editor.
+ * @param screenName The screen to create a variant for
+ * @param variantLabel The next variant label (B, C, D, ...)
+ * @param userDescription Free-text describing how the variant should differ
+ */
+export async function generateOnDemandVariant(
+    context: Context,
+    screenName: string,
+    variantLabel: string,
+    userDescription: string
+): Promise<ScreenVariant | null> {
+    log(`Generating on-demand variant: ${screenName} Variant ${variantLabel}`);
+    wsManager.sendLog(context.projectId, `🎨 Creating new variant ${variantLabel} for ${screenName}...`);
+
+    const uiuxData = context.planningData?.uiuxData;
+    if (!uiuxData) {
+        log('No uiuxData available');
+        return null;
+    }
+
+    // Find the screen definition
+    const screen = uiuxData.keyScreens.find((s: KeyScreen) => s.name === screenName);
+    if (!screen) {
+        log(`Screen not found: ${screenName}`);
+        return null;
+    }
+
+    // Get the design brief (should be cached from initial generation)
+    const brief = await generateDesignBrief(context, screen);
+
+    // Generate a design prompt using the user's description
+    const designPrompt = await generateDesignPromptForVariant(
+        context, screen, brief, variantLabel, userDescription
+    );
+
+    // Generate the slot ID and emit reservation
+    const { generateSlotId } = require('./types');
+    const slotId = generateSlotId();
+
+    wsManager.broadcast(context.projectId, {
+        type: "variant_slot_reserved",
+        timestamp: new Date().toISOString(),
+        data: {
+            slotId,
+            screenName: screen.name,
+            screenType: screen.type,
+            variant: variantLabel,
+            totalSlots: 1,
+            slotIndex: 0,
+            htmlContent: getFallbackHTML(screen.name, variantLabel),
+            description: `Generating: ${userDescription.substring(0, 50)}...`,
+            version: 1,
+            status: "pending",
+            isOnDemand: true
+        }
+    });
+
+    // Generate the HTML variant
+    try {
+        const variant = await generateSingleVariant(
+            context, screen, variantLabel, designPrompt, undefined, slotId
+        );
+
+        // Emit the completed variant
+        wsManager.broadcast(context.projectId, {
+            type: "screen_preview_single",
+            timestamp: new Date().toISOString(),
+            data: {
+                slotId,
+                screenName: variant.screenName,
+                screenType: variant.screenType,
+                variant: variant.variant,
+                id: variant.id,
+                description: variant.description,
+                htmlContent: variant.htmlContent,
+                cssContent: variant.cssContent,
+                deviceScreens: variant.deviceScreens,
+                completedCount: 1,
+                totalVariants: 1,
+                isRetry: false,
+                isOnDemand: true
+            }
+        });
+
+        log(`✅ On-demand variant generated: ${screenName} Variant ${variantLabel}`);
+        return variant;
+    } catch (error: any) {
+        log(`❌ Failed to generate on-demand variant: ${error.message}`);
+        wsManager.broadcast(context.projectId, {
+            type: "screen_preview_single",
+            timestamp: new Date().toISOString(),
+            data: {
+                slotId,
+                screenName: screen.name,
+                screenType: screen.type,
+                variant: variantLabel,
+                error: true,
+                errorMessage: error.message,
+                completedCount: 1,
+                totalVariants: 1,
+                isOnDemand: true
+            }
+        });
+        return null;
+    }
 }
 
 /**
@@ -693,76 +943,74 @@ Preferences:
 }
 
 /**
- * Build the user prompt for variant generation (includes brief + variant hint)
+ * Build the user prompt input for the VARIANT_DESIGN_PROMPT LLM call
+ * Input: Brief + Variant label + Mood + Taste
  */
-function buildVariantPrompt(
+function buildDesignPromptInput(
     context: Context,
     brief: ScreenDesignBrief,
-    variantLabel: 'A' | 'B' | 'C',
-    feedbackHint?: string
+    variantLabel: string,
+    userDescription?: string
 ): string {
     const uiuxData = context.planningData?.uiuxData;
 
-    // Safely extract brief fields (LLM may return unexpected shapes)
-    const contentZones = Array.isArray(brief.layout?.contentZones) ? brief.layout.contentZones : [];
-    const components = Array.isArray(brief.components) ? brief.components : [];
-    const headings = Array.isArray(brief.content?.headings) ? brief.content.headings : [];
-    const labels = Array.isArray(brief.content?.labels) ? brief.content.labels : [];
-    const sampleData = Array.isArray(brief.content?.sampleData) ? brief.content.sampleData : [];
-
-    let prompt = `# Design Brief
-
-## Screen: ${brief.screenName} (${brief.screenType})
-
-## Layout
-- Structure: ${brief.layout?.structure || 'Standard layout'}
-- Header: ${brief.layout?.headerType || 'Top navigation'}
-- Navigation: ${brief.layout?.navigationStyle || 'Standard navigation'}
-- Content Zones: ${contentZones.join(', ') || 'Main content area'}
-
-## Components
-${components.map(c => `- **${c.name}**: ${c.description} (Placement: ${c.placement})`).join('\n') || '- Standard components'}
-
-## Content
-- Headings: ${headings.join(', ') || brief.screenName}
-- Labels: ${labels.join(', ') || 'Standard labels'}
-- Sample Data: ${sampleData.join(', ') || 'Sample data'}
-
-## Design Notes
-${brief.designNotes || 'Follow the selected mood'}
-
-## Mood: ${uiuxData?.mood || 'minimal'}
-`;
+    let prompt = `# Design Brief\n\n${JSON.stringify(brief, null, 2)}\n\n`;
+    prompt += `# Variant: ${variantLabel}\n`;
+    prompt += `# Mood: ${uiuxData?.mood || 'minimal'}\n`;
 
     if (uiuxData?.tasteAnalysis) {
-        prompt += `
-## Taste Preferences
-- Whitespace: ${uiuxData.tasteAnalysis.preferences.whitespace}
-- Corners: ${uiuxData.tasteAnalysis.preferences.corners}
-- Color Style: ${uiuxData.tasteAnalysis.preferences.colorStyle}
-- Density: ${uiuxData.tasteAnalysis.preferences.density}
-- Animations: ${uiuxData.tasteAnalysis.preferences.animations}
-`;
+        prompt += `\n# Taste Analysis\nDesign Signature: ${uiuxData.tasteAnalysis.designSignature}\n`;
+        prompt += `Preferences:\n`;
+        prompt += `- Whitespace: ${uiuxData.tasteAnalysis.preferences.whitespace}\n`;
+        prompt += `- Corners: ${uiuxData.tasteAnalysis.preferences.corners}\n`;
+        prompt += `- Color Style: ${uiuxData.tasteAnalysis.preferences.colorStyle}\n`;
+        prompt += `- Density: ${uiuxData.tasteAnalysis.preferences.density}\n`;
+        prompt += `- Animations: ${uiuxData.tasteAnalysis.preferences.animations}\n`;
     }
 
-    prompt += `\n---\n\nGenerate VARIANT ${variantLabel}.\n${getVariantHint(variantLabel)}`;
-
-    if (feedbackHint) {
-        prompt += `\n\n## User Feedback to Incorporate\n${feedbackHint}\n`;
+    if (userDescription) {
+        prompt += `\n# User Description\nThe user wants this variant to differ from the primary design as follows:\n${userDescription}\n`;
     }
 
     return prompt;
 }
 
-function getVariantHint(variant: 'A' | 'B' | 'C'): string {
-    switch (variant) {
-        case 'A':
-            return 'Make this the "classic" option - clean, conventional, safe choice.';
-        case 'B':
-            return 'Make this the "bold" option - more creative, unique layout or colors.';
-        case 'C':
-            return 'Make this the "experimental" option - push boundaries, try something unexpected.';
+/**
+ * Build the user prompt for HTML generation from a VariantDesignPrompt
+ * This replaces the old buildVariantPrompt + getVariantHint functions
+ */
+function buildHTMLPromptFromDesignPrompt(
+    designPrompt: VariantDesignPrompt,
+    feedbackHint?: string
+): string {
+    const componentSpecs = Array.isArray(designPrompt.componentSpecs) ? designPrompt.componentSpecs : [];
+
+    let prompt = `# Variant Design Prompt\n\n`;
+    prompt += `## Screen: ${designPrompt.screenName} (${designPrompt.screenType})\n`;
+    prompt += `## Variant: ${designPrompt.variant}\n\n`;
+
+    prompt += `## Layout Strategy\n${designPrompt.layoutStrategy || 'Standard layout'}\n\n`;
+
+    prompt += `## Components (${componentSpecs.length})\n`;
+    componentSpecs.forEach((spec, i) => {
+        prompt += `\n### ${i + 1}. ${spec.name}\n`;
+        prompt += `- HTML Structure: ${spec.htmlStructure}\n`;
+        prompt += `- CSS Directives: ${spec.cssDirectives}\n`;
+        if (spec.interactionNotes) {
+            prompt += `- Interactions: ${spec.interactionNotes}\n`;
+        }
+    });
+
+    prompt += `\n## Color Directives\n${designPrompt.colorDirectives || 'Use mood-appropriate colors'}\n`;
+    prompt += `\n## Typography Directives\n${designPrompt.typographyDirectives || 'Use system fonts'}\n`;
+    prompt += `\n## Spacing Notes\n${designPrompt.spacingNotes || 'Standard spacing'}\n`;
+    prompt += `\n## Overall Design Notes\n${designPrompt.overallNotes || 'Follow the design prompt faithfully'}\n`;
+
+    if (feedbackHint) {
+        prompt += `\n---\n\n## User Feedback to Incorporate\n${feedbackHint}\n`;
     }
+
+    return prompt;
 }
 
 function getDefaultScreens(): KeyScreen[] {

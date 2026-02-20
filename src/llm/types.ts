@@ -26,6 +26,7 @@ export interface LLMRequest {
     tools?: any[];
     tool_choice?: "auto" | "required" | "none";
     temperature?: number;
+    top_p?: number;
     max_tokens?: number;
 }
 
@@ -33,6 +34,7 @@ export interface LLMResponse {
     content: string | null;
     tool_calls?: ToolCall[];
     finish_reason: "stop" | "tool_calls" | "length" | "content_filter";
+    reasoning?: string;
     usage?: {
         prompt_tokens: number;
         completion_tokens: number;

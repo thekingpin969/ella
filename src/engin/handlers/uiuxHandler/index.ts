@@ -14,7 +14,7 @@ import { log } from "./utils";
 // Import modules
 import { analyzeMoodFromContext, handleMoodSelected } from "./mood";
 import { searchInspirations, handleInspirationsRated } from "./inspiration";
-import { identifyKeyScreens, generateScreenVariants, generateAllVariantsParallel, handleScreenFeedback } from "./screenGenerator";
+import { identifyKeyScreens, generateScreenVariants, generateAllVariantsParallel, handleScreenFeedback, generateOnDemandVariant } from "./screenGenerator";
 import { extractDesignTokens } from "./designTokens";
 import { generateStyleGuide } from "./styleGuide";
 import { generateScreen2Artifacts } from "./artifacts";
@@ -42,6 +42,9 @@ export class UIUXHandler extends BaseHandler {
                 break;
             case "variant_chat":
                 this.onVariantChat(context, event);
+                break;
+            case "create_variant":
+                this.onCreateVariant(context, event);
                 break;
             case "refine_components":
                 this.onRefineComponents(context, event);
@@ -616,6 +619,57 @@ ${message}`;
 
         } catch (error: any) {
             log(`Error in variant chat: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error: ${error.message}`
+            });
+        }
+    }
+
+    /**
+     * Handle on-demand variant creation from the canvas editor.
+     * User describes how the new variant should differ from the primary design.
+     */
+    private async onCreateVariant(context: Context, event: Event): Promise<void> {
+        const payload = event.payload.payload || event.payload;
+        const { screenName, description } = payload;
+
+        if (!screenName || !description) {
+            wsManager.sendMessage(context.projectId, { message: "❌ Screen name and description are required." });
+            return;
+        }
+
+        try {
+            const uiuxData = context.planningData?.uiuxData;
+            if (!uiuxData) {
+                wsManager.sendMessage(context.projectId, { message: "❌ No UI/UX data available." });
+                return;
+            }
+
+            // Determine next variant label by counting existing variants for this screen
+            const existingVariants = uiuxData.screenVariants.filter(
+                (v: ScreenVariant) => v.screenName === screenName
+            );
+            const nextLabel = String.fromCharCode(65 + existingVariants.length); // A=65, B=66, C=67, ...
+
+            log(`Creating on-demand variant ${nextLabel} for ${screenName}: "${description}"`);
+            wsManager.sendLog(context.projectId, `🎨 Creating variant ${nextLabel} for ${screenName}...`);
+
+            const variant = await generateOnDemandVariant(
+                context, screenName, nextLabel, description
+            );
+
+            if (variant) {
+                // Add to the screen variants collection
+                uiuxData.screenVariants.push(variant);
+                log(`On-demand variant ${nextLabel} added for ${screenName}`);
+            } else {
+                wsManager.sendMessage(context.projectId, {
+                    message: `❌ Failed to generate variant for ${screenName}.`
+                });
+            }
+
+        } catch (error: any) {
+            log(`Error creating variant: ${error.message}`);
             wsManager.sendMessage(context.projectId, {
                 message: `❌ Error: ${error.message}`
             });

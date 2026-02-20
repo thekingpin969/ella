@@ -22,6 +22,7 @@ export type EventName =
     | "inspirations_rated"
     | "screen_feedback"
     | "variant_chat"
+    | "create_variant"
     | "refine_components"
     | "complete_screen2"
 

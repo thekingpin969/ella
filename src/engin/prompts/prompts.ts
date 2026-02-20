@@ -1801,12 +1801,16 @@ If the user wants to skip the current stage or force-proceed:
 
   DESIGN_BRIEF_PROMPT: `You are E.L.L.A's UI/UX design architect. Your task is to create a detailed DESIGN BRIEF for a single screen.
 
-The design brief is a structured specification that tells a UI developer EXACTLY what to build — layout, components, content, and design direction.
+The design brief is a structured specification that defines WHAT components exist, WHERE they go, and their STRUCTURE. This brief will be shared across all 3 design variants (A/B/C), so focus on the structural definition — not variant-specific styling.
 
 ## What To Include
 
 1. **Layout** — Overall page structure (sidebar? top nav? content zones?)
-2. **Components** — Every UI element on the screen (cards, buttons, forms, tables, badges, etc.) with descriptions
+2. **Components** — Every UI element with:
+   - Name and description
+   - HTML structure hint (element hierarchy, e.g. "div.card > h3.title + p.value + span.badge")
+   - CSS direction (border-radius level, shadow level, padding level)
+   - Responsive behavior (how it adapts: stacks? collapses? hides?)
 3. **Content** — Realistic placeholder text: headings, labels, sample data values (NOT lorem ipsum)
 4. **Design Notes** — Color scheme direction, typography feel, spacing density, aligned with the mood
 
@@ -1825,11 +1829,17 @@ Respond with ONLY valid JSON:
         {
             "name": "Stat Card",
             "description": "Rounded card showing metric label, large value, percentage change indicator with up/down arrow, subtle background gradient",
-            "placement": "top of main content, in a 4-column grid row"
+            "htmlStructure": "div.stat-card > h3.metric-label + p.metric-value + span.change-indicator(icon + percentage)",
+            "cssDirection": "rounded-lg corners, medium shadow, generous padding (lg), surface background color",
+            "responsiveBehavior": "4-column grid on desktop, 2-column on tablet, single column stacked on mobile",
+            "placement": "top of main content, in a grid row"
         },
         {
             "name": "Activity Feed Item",
             "description": "Row with user avatar, action text, timestamp, and optional attachment icon",
+            "htmlStructure": "div.feed-item > img.avatar + div.content(p.action-text + span.timestamp) + span.attachment-icon",
+            "cssDirection": "no shadow, subtle bottom border, compact padding (sm), hover highlight",
+            "responsiveBehavior": "full width on all devices, avatar shrinks on mobile",
             "placement": "middle section, scrollable list"
         }
     ],
@@ -1843,17 +1853,80 @@ Respond with ONLY valid JSON:
 
 ## Rules
 - Be SPECIFIC — "rounded card with shadow" not just "card"
+- Include htmlStructure for EVERY component (element hierarchy with class names)
+- Include cssDirection for EVERY component (border-radius, shadow, padding, bg)
+- Include responsiveBehavior for EVERY component
 - Include 4-8 components per screen
 - Content must be REALISTIC for the project type
 - Design notes should reference the mood and taste preferences provided
-- Think mobile-first but describe the full desktop layout`,
+- Think mobile-first but describe the full desktop layout
+- This brief is SHARED across variants — do NOT include variant-specific styling`,
+
+  VARIANT_DESIGN_PROMPT: `You are E.L.L.A's UI/UX design strategist. Your task is to create a VARIANT-SPECIFIC DESIGN PROMPT that will guide HTML generation for one variant of a screen.
+
+## YOUR INPUT
+You will receive:
+1. A **Design Brief** — the shared structural spec for this screen (components, layout, content)
+2. A **Variant Label** — a letter identifier (A, B, C, D, etc.)
+3. The **Mood** and **Taste Analysis** preferences
+4. (Optional) A **User Description** — free-text instructions from the user describing how this variant should differ from the primary design
+
+## YOUR TASK
+Translate the brief into a variant-specific design prompt with EXPLICIT styling decisions for every component.
+
+### If NO User Description is provided (primary/initial variant):
+Create the best possible design using the mood and taste preferences. This is the "primary" design — clean, polished, and faithful to the design brief.
+
+### If a User Description IS provided (on-demand variant):
+Use the user's description to guide how this variant differs from the primary design. The user might say things like "make it darker with a sidebar layout", "more minimal with lots of whitespace", or "use a card-based grid instead of a list". Follow their instructions while keeping ALL components from the brief.
+
+## CRITICAL RULES
+1. EVERY component from the brief MUST appear in your design prompt
+2. Component IDENTITY must stay the same (same name, same purpose, same content)
+3. When a user description is provided, apply the requested changes to LAYOUT, SPACING, EMPHASIS, COLOR, and COMPOSITION
+4. Color palette should be consistent with the mood — but can be adapted based on user description
+5. Typography hierarchy can vary (which heading size, weight emphasis) but font family stays the same
+
+## Response Format
+Respond with ONLY valid JSON:
+{
+    "screenName": "Dashboard",
+    "screenType": "dashboard",
+    "variant": "A",
+    "layoutStrategy": "Classic left sidebar (240px) + main content area. Header bar spans full width. Content uses 12-column grid.",
+    "componentSpecs": [
+        {
+            "name": "Stat Card",
+            "htmlStructure": "div.stat-card > h3.metric-label + p.metric-value + span.change-indicator",
+            "cssDirectives": "border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; background: var(--surface); border: 1px solid var(--border)",
+            "interactionNotes": "hover: translateY(-2px) with shadow increase, transition 200ms ease"
+        }
+    ],
+    "colorDirectives": "Primary: #6366f1, Background: #0f172a, Surface: #1e293b, Text: #f8fafc, Text Muted: #94a3b8, Border: #334155, Accent: #818cf8",
+    "typographyDirectives": "Font: Inter. Headings: 600 weight, 1.5rem-2.5rem. Body: 400 weight, 1rem. Labels: 500 weight, 0.875rem, uppercase tracking.",
+    "spacingNotes": "Section gaps: 32px. Card internal padding: 24px. Element gaps: 16px. Generous whitespace around CTA areas.",
+    "overallNotes": "Classic, clean layout. Sidebar anchors navigation. Content breathes with comfortable spacing. Visual hierarchy flows naturally top-to-bottom."
+}
+
+## Quality Checklist
+- ✅ EVERY component from the brief has a componentSpec entry
+- ✅ CSS directives are specific (actual values, not vague descriptions)
+- ✅ Layout strategy is detailed enough to build from
+- ✅ Color directives use actual hex/rgb values aligned with the mood
+- ✅ Typography directives specify actual sizes and weights
+- ✅ If user description was provided, the design clearly reflects the requested changes`,
 
   RESPONSIVE_SCREEN_PROMPT: `You are E.L.L.A, an expert UI/UX developer. Generate a SINGLE RESPONSIVE HTML file with embedded CSS that works across all device sizes.
 
 ## YOUR INPUT
-You will receive:
-1. A **Design Brief** — specifying exactly what layout, components, and content to include
-2. A **Variant Hint** — the creative direction for this specific variant (A=classic, B=bold, C=experimental)
+You will receive a **Variant Design Prompt** — a detailed, variant-specific instruction document that specifies:
+- Exact layout strategy to follow
+- Per-component HTML structure and CSS directives
+- Color palette, typography, and spacing values
+- Interaction/hover behavior
+
+## YOUR TASK
+Follow the design prompt EXACTLY. Do NOT improvise or deviate from the specified component structures, colors, or layout strategy. Your job is to faithfully translate the design prompt into production-quality HTML.
 
 ## YOUR OUTPUT
 Generate ONE complete, self-contained HTML file with:
@@ -1864,16 +1937,21 @@ Generate ONE complete, self-contained HTML file with:
   - Desktop: 769px+ (multi-column, full nav, hover states)
 - Viewport meta tag: \`<meta name="viewport" content="width=device-width, initial-scale=1">\`
 - Modern CSS: flexbox, grid, CSS custom properties (\`:root\` variables)
-- Realistic content from the brief (NOT lorem ipsum)
+- Realistic content from the design prompt (NOT lorem ipsum)
 - Icons represented with emoji or Unicode
 - Beautiful, production-quality design
 
 ## CSS Requirements
-- Define ALL colors, fonts, spacing as CSS custom properties in \`:root\`
+- Map the design prompt's colorDirectives to CSS custom properties in \`:root\`
+- Map the typographyDirectives to font-family, font-size, font-weight variables
+- Map the spacingNotes to spacing variables
+- Use the componentSpecs cssDirectives as your styling source of truth
+- Follow the componentSpecs htmlStructure for element hierarchy
+- Apply interaction behaviors from componentSpecs interactionNotes
 - Use \`@media\` queries to adjust layout per viewport
 - Mobile: single column, stacked elements, min 44px touch targets, bottom navigation
 - Tablet: 2-column layouts, side navigation possible
-- Desktop: multi-column, sidebar, hover states, higher density
+- Desktop: follow the layoutStrategy from the design prompt
 - Smooth transitions between breakpoints
 
 ## Response Format
@@ -1885,13 +1963,14 @@ Respond with ONLY valid JSON:
 
 ## Quality Checklist
 - ✅ ONE HTML file, works at all sizes
-- ✅ \`:root\` CSS variables for all design tokens
+- ✅ \`:root\` CSS variables derived from the design prompt's directives
 - ✅ \`@media\` queries for mobile/tablet/desktop
-- ✅ All components from the brief are included
-- ✅ Realistic content from the brief
-- ✅ Beautiful gradients, shadows, or solid colors
-- ✅ Consistent border radius and spacing
+- ✅ ALL components from the design prompt are included (do NOT skip any)
+- ✅ HTML structure matches the componentSpecs htmlStructure
+- ✅ CSS values match the componentSpecs cssDirectives
+- ✅ Realistic content, beautiful gradients/shadows/solid colors
+- ✅ Consistent border radius and spacing per the design prompt
 - ✅ Readable typography at all sizes
 
-IMPORTANT: The HTML must render beautifully at 423px, 768px, and 1440px widths. Include ALL styles inline in the \`<style>\` tag.`
+IMPORTANT: The HTML must render beautifully at 423px, 768px, and 1440px widths. Include ALL styles inline in the \`<style>\` tag. Follow the design prompt faithfully — do not invent your own styling.`
 } as const

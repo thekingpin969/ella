@@ -14,9 +14,10 @@ export class NvidiaProvider implements LLMProvider {
     constructor() {
         this.apiKey = process.env.NVIDIA_API_KEY || "";
         // this.model = process.env.NVIDIA_MODEL || "minimaxai/minimax-m2.1";
-        this.model = "minimaxai/minimax-m2.1";
+        // this.model = "minimaxai/minimax-m2.1";
         // this.model = "z-ai/glm4.7";
-        // this.model = "openai/gpt-oss-120b";
+        this.model = "openai/gpt-oss-120b";
+        // this.model = "moonshotai/kimi-k2.5";
         this.includeReasoning = process.env.NVIDIA_INCLUDE_REASONING === "true";
 
         if (!this.apiKey) {
