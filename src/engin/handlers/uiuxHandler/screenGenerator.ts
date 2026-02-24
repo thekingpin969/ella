@@ -95,13 +95,15 @@ export async function identifyKeyScreens(context: Context): Promise<KeyScreen[]>
  */
 export async function generateDesignBrief(
     context: Context,
-    screen: KeyScreen
+    screen: KeyScreen,
+    userDescription?: string,
+    referenceHTML?: string
 ): Promise<ScreenDesignBrief> {
-    log(`Generating design brief for: ${screen.name}`);
+    log(`Generating design brief for: ${screen.name}${userDescription ? ' (user-directed)' : ''}${referenceHTML ? ' (with reference)' : ''}`);
     wsManager.sendLog(context.projectId, `📋 Generating design brief for: ${screen.name}...`);
 
     const uiuxData = context.planningData?.uiuxData;
-    const briefContext = buildBriefContext(context, screen);
+    const briefContext = buildBriefContext(context, screen, userDescription, referenceHTML);
 
     const response = await callLLMWithLogging(
         context.projectId,
@@ -194,18 +196,20 @@ export async function generateAllBriefs(
  * Generate a variant-specific design prompt from a brief
  * The design prompt contains explicit styling decisions for every component
  * @param userDescription Optional free-text from user describing how this variant should differ
+ * @param referenceHTML Optional HTML from a reference variant to use as a starting point
  */
 export async function generateDesignPromptForVariant(
     context: Context,
     screen: KeyScreen,
     brief: ScreenDesignBrief,
     variantLabel: string,
-    userDescription?: string
+    userDescription?: string,
+    referenceHTML?: string
 ): Promise<VariantDesignPrompt> {
-    log(`Generating design prompt for: ${screen.name} Variant ${variantLabel}${userDescription ? ' (user-directed)' : ''}`);
+    log(`Generating design prompt for: ${screen.name} Variant ${variantLabel}${userDescription ? ' (user-directed)' : ''}${referenceHTML ? ' (with reference)' : ''}`);
     wsManager.sendLog(context.projectId, `📐 Generating design prompt: ${screen.name} Variant ${variantLabel}...`);
 
-    const userPrompt = buildDesignPromptInput(context, brief, variantLabel, userDescription);
+    const userPrompt = buildDesignPromptInput(context, brief, variantLabel, userDescription, referenceHTML);
 
     const response = await callLLMWithLogging(
         context.projectId,
@@ -367,7 +371,7 @@ export async function generateSingleVariant(
         cssContent: '',
         deviceScreens,
         description: parsed.description,
-        status: 'generated'
+        status: variantLabel === 'A' ? 'selected' : 'generated'
     };
 }
 
@@ -420,6 +424,7 @@ export async function generateAllVariantsParallel(
                         screenType: variant.screenType,
                         variant: variant.variant,
                         id: variant.id,
+                        status: variant.status,
                         description: variant.description,
                         htmlContent: variant.htmlContent,
                         cssContent: variant.cssContent,
@@ -529,6 +534,7 @@ export async function generateAllVariantsParallel(
                             screenType: variant.screenType,
                             variant: variant.variant,
                             id: variant.id,
+                            status: variant.status,
                             description: variant.description,
                             htmlContent: variant.htmlContent,
                             cssContent: variant.cssContent,
@@ -686,6 +692,7 @@ export async function generateScreenVariants(
                             screenType: variant.screenType,
                             variant: variant.variant,
                             id: variant.id,
+                            status: variant.status,
                             description: variant.description,
                             htmlContent: variant.htmlContent,
                             cssContent: variant.cssContent,
@@ -741,12 +748,14 @@ export async function generateScreenVariants(
  * @param screenName The screen to create a variant for
  * @param variantLabel The next variant label (B, C, D, ...)
  * @param userDescription Free-text describing how the variant should differ
+ * @param referenceHTML Optional HTML from a reference variant to use as a starting point
  */
 export async function generateOnDemandVariant(
     context: Context,
     screenName: string,
     variantLabel: string,
-    userDescription: string
+    userDescription: string,
+    referenceHTML?: string
 ): Promise<ScreenVariant | null> {
     log(`Generating on-demand variant: ${screenName} Variant ${variantLabel}`);
     wsManager.sendLog(context.projectId, `🎨 Creating new variant ${variantLabel} for ${screenName}...`);
@@ -764,15 +773,7 @@ export async function generateOnDemandVariant(
         return null;
     }
 
-    // Get the design brief (should be cached from initial generation)
-    const brief = await generateDesignBrief(context, screen);
-
-    // Generate a design prompt using the user's description
-    const designPrompt = await generateDesignPromptForVariant(
-        context, screen, brief, variantLabel, userDescription
-    );
-
-    // Generate the slot ID and emit reservation
+    // Generate the slot ID and emit reservation IMMEDIATELY so client shows skeleton
     const { generateSlotId } = require('./types');
     const slotId = generateSlotId();
 
@@ -796,6 +797,30 @@ export async function generateOnDemandVariant(
 
     // Generate the HTML variant
     try {
+        // Stage 1: Design Brief
+        wsManager.broadcast(context.projectId, {
+            type: "variant_generation_progress",
+            timestamp: new Date().toISOString(),
+            data: { slotId, screenName: screen.name, variant: variantLabel, stage: "brief", message: "Generating design brief..." }
+        });
+        const brief = await generateDesignBrief(context, screen, userDescription, referenceHTML);
+
+        // Stage 2: Design Prompt
+        wsManager.broadcast(context.projectId, {
+            type: "variant_generation_progress",
+            timestamp: new Date().toISOString(),
+            data: { slotId, screenName: screen.name, variant: variantLabel, stage: "prompt", message: "Creating design prompt..." }
+        });
+        const designPrompt = await generateDesignPromptForVariant(
+            context, screen, brief, variantLabel, userDescription, referenceHTML
+        );
+
+        // Stage 3: HTML Generation
+        wsManager.broadcast(context.projectId, {
+            type: "variant_generation_progress",
+            timestamp: new Date().toISOString(),
+            data: { slotId, screenName: screen.name, variant: variantLabel, stage: "html", message: "Generating HTML..." }
+        });
         const variant = await generateSingleVariant(
             context, screen, variantLabel, designPrompt, undefined, slotId
         );
@@ -810,6 +835,7 @@ export async function generateOnDemandVariant(
                 screenType: variant.screenType,
                 variant: variant.variant,
                 id: variant.id,
+                status: variant.status,
                 description: variant.description,
                 htmlContent: variant.htmlContent,
                 cssContent: variant.cssContent,
@@ -859,18 +885,33 @@ export async function handleScreenFeedback(
     }
 
     switch (feedback.action) {
-        case 'approve':
-            // Mark the selected variant as approved
+        case 'select':
+            // Mark the selected variant as selected
             const variant = uiuxData.screenVariants.find(
                 v => v.screenType === feedback.screenType && v.variant === feedback.selectedVariant
             );
             if (variant) {
-                variant.status = 'approved';
+                variant.status = 'selected';
+
+                // If a specific version was selected, restore its content
+                if (feedback.selectedVersion && variant.versions) {
+                    const targetVersion = variant.versions.find(v => v.version === feedback.selectedVersion);
+                    if (targetVersion) {
+                        variant.htmlContent = targetVersion.htmlContent;
+                        variant.cssContent = targetVersion.cssContent;
+                        variant.description = targetVersion.description;
+                        if (targetVersion.deviceScreens) {
+                            variant.deviceScreens = targetVersion.deviceScreens;
+                        }
+                        variant.version = targetVersion.version;
+                        log(`Restored Variant ${variant.variant} to version ${targetVersion.version}`);
+                    }
+                }
             }
 
-            // Add to approved screens
-            if (!uiuxData.approvedScreens.includes(feedback.screenType)) {
-                uiuxData.approvedScreens.push(feedback.screenType);
+            // Add to selected screens
+            if (!uiuxData.selectedScreens.includes(feedback.screenType)) {
+                uiuxData.selectedScreens.push(feedback.screenType);
             }
 
             // Update confidence
@@ -878,7 +919,7 @@ export async function handleScreenFeedback(
             uiuxData.confidenceScore += screenWeight;
 
             wsManager.sendMessage(context.projectId, {
-                message: `✅ **${feedback.screenType}** variant **${feedback.selectedVariant}** approved!`
+                message: `✅ **${feedback.screenType}** variant **${feedback.selectedVariant}** selected!`
             });
 
             return { needsRegeneration: false, moveToNext: true };
@@ -913,7 +954,7 @@ export async function handleScreenFeedback(
 /**
  * Build context for the design brief LLM call
  */
-function buildBriefContext(context: Context, screen: KeyScreen): string {
+function buildBriefContext(context: Context, screen: KeyScreen, userDescription?: string, referenceHTML?: string): string {
     const uiuxData = context.planningData?.uiuxData;
 
     let ctx = `# Design Brief Request
@@ -939,6 +980,14 @@ Preferences:
 `;
     }
 
+    if (userDescription) {
+        ctx += `\n## User Description\nThe user wants this variant to have the following characteristics:\n${userDescription}\n`;
+    }
+
+    if (referenceHTML) {
+        ctx += `\n## Reference Variant HTML\nUse this existing variant as a starting reference for the layout and structure:\n\`\`\`html\n${referenceHTML}\n\`\`\`\n`;
+    }
+
     return ctx;
 }
 
@@ -950,7 +999,8 @@ function buildDesignPromptInput(
     context: Context,
     brief: ScreenDesignBrief,
     variantLabel: string,
-    userDescription?: string
+    userDescription?: string,
+    referenceHTML?: string
 ): string {
     const uiuxData = context.planningData?.uiuxData;
 
@@ -970,6 +1020,10 @@ function buildDesignPromptInput(
 
     if (userDescription) {
         prompt += `\n# User Description\nThe user wants this variant to differ from the primary design as follows:\n${userDescription}\n`;
+    }
+
+    if (referenceHTML) {
+        prompt += `\n# Reference Variant HTML\nThe user selected an existing variant as a reference. Use this HTML as a starting point and modify it according to the user's description above:\n\`\`\`html\n${referenceHTML}\n\`\`\`\n`;
     }
 
     return prompt;

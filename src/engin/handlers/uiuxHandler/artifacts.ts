@@ -60,38 +60,18 @@ export async function generateScreen2Artifacts(context: Context): Promise<void> 
             content: JSON.stringify(inspirationGallery, null, 2)
         });
 
-        // 3.5 Prototype
-        if (uiuxData.prototypeData) {
-            artifacts.push({
-                path: 'design/prototype.html',
-                content: await fsManager.readFile(context.projectId, 'design/prototype.html') || ''
-            });
 
-            // Also include the individual screens used by the prototype
-            // We assume they are in design/screens/
-            const approvedVariants = uiuxData.screenVariants.filter(v => v.status === 'approved');
-            for (const variant of approvedVariants) {
-                const screenPath = `design/screens/${variant.screenType}.html`;
-                const content = await fsManager.readFile(context.projectId, screenPath);
-                if (content) {
-                    artifacts.push({
-                        path: screenPath,
-                        content
-                    });
-                }
-            }
-        }
 
-        // 4. Approved Screens (Stand-alone previews)
-        const approvedVariants = uiuxData.screenVariants.filter(v => v.status === 'approved');
-        for (const variant of approvedVariants) {
+        // 4. Selected Screens (Stand-alone previews)
+        const selectedVariants = uiuxData.screenVariants.filter(v => v.status === 'selected');
+        for (const variant of selectedVariants) {
             const filename = `${variant.screenType.toLowerCase().replace(/\s+/g, '-')}.html`;
 
             // Create complete HTML with embedded CSS
             const fullHTML = createCompleteHTML(variant.screenName, variant.htmlContent, variant.cssContent);
 
             artifacts.push({
-                path: `design/approved-screens/${filename}`,
+                path: `design/selected-screens/${filename}`,
                 content: fullHTML
             });
         }
@@ -171,7 +151,7 @@ function createScreen2Summary(context: Context): string {
         return '# Screen 2 Summary\n\nNo data available.';
     }
 
-    const approvedCount = uiuxData.approvedScreens.length;
+    const selectedCount = uiuxData.selectedScreens.length;
     const totalScreens = uiuxData.keyScreens.length;
 
     return `# Screen 2: UI/UX Design Summary
@@ -188,7 +168,7 @@ function createScreen2Summary(context: Context): string {
 | **Mood** | ${uiuxData.mood || 'Not set'} |
 | **Mood Locked** | ${uiuxData.moodLocked ? '✅ Yes' : '❌ No'} |
 | **Inspirations Reviewed** | ${uiuxData.inspirations.length} |
-| **Screens Designed** | ${approvedCount}/${totalScreens} |
+| **Screens Designed** | ${selectedCount}/${totalScreens} |
 | **Confidence Score** | ${uiuxData.confidenceScore}% |
 
 ---
@@ -199,11 +179,11 @@ ${uiuxData.tasteAnalysis?.designSignature || 'No taste analysis performed.'}
 
 ---
 
-## 📱 Approved Screens
+## 📱 Selected Screens
 
-${uiuxData.approvedScreens.length > 0
-            ? uiuxData.approvedScreens.map(s => `- ${s}`).join('\n')
-            : 'No screens approved yet.'}
+${uiuxData.selectedScreens.length > 0
+            ? uiuxData.selectedScreens.map(s => `- ${s}`).join('\n')
+            : 'No screens selected yet.'}
 
 ---
 
@@ -212,7 +192,7 @@ ${uiuxData.approvedScreens.length > 0
 - \`design/ui-style-guide.md\` - Human-readable style guide
 - \`design/design-tokens.json\` - Machine-readable tokens
 - \`design/inspiration-gallery.json\` - Curated inspirations
-- \`design/approved-screens/\` - HTML preview files
+- \`design/selected-screens/\` - HTML preview files
 
 ---
 

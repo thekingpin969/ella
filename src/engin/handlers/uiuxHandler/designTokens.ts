@@ -9,10 +9,10 @@ import { getCachedUIUXStage, setCachedUIUXStage, UIUXCacheKey } from "./stageCac
 import { PROMPTS } from "../../prompts/prompts";
 
 /**
- * Extract design tokens from approved screen variants
+ * Extract design tokens from selected screen variants
  */
 export async function extractDesignTokens(context: Context): Promise<DesignTokens> {
-    log('Extracting design tokens from approved screens...');
+    log('Extracting design tokens from selected screens...');
 
     // Check cache first
     const cached = getCachedUIUXStage<DesignTokens>(context, UIUXCacheKey.DESIGN_TOKENS);
@@ -26,18 +26,18 @@ export async function extractDesignTokens(context: Context): Promise<DesignToken
         return getDefaultDesignTokens();
     }
 
-    // Get approved variants
-    const approvedVariants = uiuxData.screenVariants.filter(v => v.status === 'approved');
+    // Get selected variants
+    const selectedVariants = uiuxData.screenVariants.filter(v => v.status === 'selected');
 
-    if (approvedVariants.length === 0) {
-        log('No approved variants, using defaults based on mood');
+    if (selectedVariants.length === 0) {
+        log('No selected variants, using defaults based on mood');
         const tokens = getTokensForMood(uiuxData.mood || 'minimal');
         setCachedUIUXStage(context, UIUXCacheKey.DESIGN_TOKENS, tokens);
         return tokens;
     }
 
     // Combine all CSS for analysis
-    const combinedCSS = approvedVariants
+    const combinedCSS = selectedVariants
         .map(v => v.cssContent + '\n' + extractStyleFromHTML(v.htmlContent))
         .join('\n\n');
 
@@ -47,7 +47,7 @@ export async function extractDesignTokens(context: Context): Promise<DesignToken
 
 ## Design Signature: ${uiuxData.tasteAnalysis?.designSignature || 'Modern, clean design'}
 
-## Combined Styles from Approved Screens:
+## Combined Styles from Selected Screens:
 ${combinedCSS.substring(0, 5000)}
 `;
 

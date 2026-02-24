@@ -145,7 +145,7 @@ export type ScreenType =
     | 'other';
 
 export type ScreenVariantLabel = string;
-export type ScreenStatus = 'pending' | 'generated' | 'approved' | 'rejected' | 'mixed';
+export type ScreenStatus = 'pending' | 'generated' | 'selected' | 'rejected' | 'mixed';
 
 export interface KeyScreen {
     type: ScreenType;
@@ -200,6 +200,15 @@ export interface VariantDesignPrompt {
     overallNotes: string;                   // Variant personality applied to the whole page
 }
 
+export interface ScreenVariantVersion {
+    version: number;
+    htmlContent: string;
+    cssContent: string;
+    deviceScreens?: DeviceScreens;
+    description: string;
+    timestamp: string;
+}
+
 export interface ScreenVariant {
     id: string;
     slotId?: string; // Stable slot identifier for UI positioning
@@ -213,13 +222,17 @@ export interface ScreenVariant {
     deviceScreens?: DeviceScreens;
     description: string;
     status: ScreenStatus;
+    // Version tracking for edit history
+    version?: number;
+    versions?: ScreenVariantVersion[];
 }
 
 export interface ScreenFeedback {
     screenType: ScreenType;
     screenName?: string; // Optional: target specific screen by name (if multiple screens of same type)
-    action: 'approve' | 'reject_all' | 'mix' | 'regenerate';
+    action: 'select' | 'reject_all' | 'mix' | 'regenerate';
     selectedVariant?: ScreenVariantLabel;
+    selectedVersion?: number; // Added to support selecting a specific version of a variant
     mixInstructions?: string;
     feedback?: string;
 }
@@ -325,7 +338,7 @@ export interface DesignTokens {
 
 export interface UIUXData {
     // Phase tracking
-    currentPhase: 'mood' | 'inspiration' | 'screens' | 'tokens' | 'prototype' | 'refinement' | 'complete';
+    currentPhase: 'mood' | 'inspiration' | 'screens' | 'tokens' | 'complete';
 
     // Mood
     mood?: Mood;
@@ -340,36 +353,19 @@ export interface UIUXData {
     // Screens
     keyScreens: KeyScreen[];
     screenVariants: ScreenVariant[];
-    approvedScreens: ScreenType[];
+    selectedScreens: ScreenType[];
     currentScreenIndex: number;
 
     // Design System
     designTokens?: DesignTokens;
 
-    // New stages
-    prototypeData?: PrototypeData;
-    refinementData?: RefinementData;
+
 
     // Progress
     confidenceScore: number;
 }
 
-export interface PrototypeData {
-    url: string; // Path to prototype.html
-    structure: any; // Navigation structure
-    status: 'pending' | 'generated' | 'error';
-}
 
-export interface RefinementData {
-    commonComponents: string[]; // e.g. ['navbar', 'footer']
-    history: RefinementAction[];
-}
-
-export interface RefinementAction {
-    timestamp: string;
-    instruction: string;
-    affectedComponents: string[];
-}
 
 // ==========================================
 // CONSTANTS
@@ -394,7 +390,7 @@ export function createInitialUIUXData(): UIUXData {
         inspirationLocked: false,
         keyScreens: [],
         screenVariants: [],
-        approvedScreens: [],
+        selectedScreens: [],
         currentScreenIndex: 0,
         confidenceScore: 0
     };

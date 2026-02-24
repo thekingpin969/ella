@@ -19,6 +19,7 @@ export type WSMessagetType =
   | "variant_slot_reserved"
   | "variant_chat_response"
   | "variant_updated"
+  | "variant_generation_progress"
   | "prototype_ready"
   | "screen2_complete"
   | "log";

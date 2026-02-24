@@ -1,6 +1,6 @@
 import { ServerWebSocket } from "bun";
 import { WSMessage } from "./types";
-import { chatDB } from "../db/chatStorage";
+import { saveMessage } from "../db/postgres";
 import { logger } from "../utils/logger";
 
 /**
@@ -98,7 +98,7 @@ class WebSocketManager {
     }, interval);
   }
 
-  public sendMessage(projectId: string, { message }: { message: string | number | null }) {
+  public async sendMessage(projectId: string, { message, conversationId }: { message: string | number | null; conversationId?: string }) {
     const projectConns = this.connections.get(projectId);
     const payload = {
       type: "message",
@@ -108,14 +108,11 @@ class WebSocketManager {
         content: message,
       }
     }
-    chatDB.saveMessage({
-      projectId,
-      content: payload.data.content,
-      role: payload.data.role as any,
-      screen: 1,
-      timestamp: payload.timestamp,
-      type: payload.type
-    })
+    if (conversationId) {
+      saveMessage(conversationId, "assistant", payload.data.content, payload.type).catch(err =>
+        logger.error("[WS] Failed to save message:", err)
+      );
+    }
     if (!projectConns) return logger.warn('no clients for ', projectId);
     for (const ws of projectConns) {
       if (ws.readyState === 1) {
@@ -126,7 +123,7 @@ class WebSocketManager {
     return { sendAmount: projectConns }
   }
 
-  public askQuestion(projectId: string, { questions }: { questions: any[] }) {
+  public async askQuestion(projectId: string, { questions, conversationId }: { questions: any[]; conversationId?: string }) {
     const projectConns = this.connections.get(projectId);
     const payload = {
       type: "questions",
@@ -138,14 +135,11 @@ class WebSocketManager {
         },
       }
     }
-    chatDB.saveMessage({
-      projectId,
-      content: payload.data.content,
-      role: payload.data.role as any,
-      screen: 1,
-      timestamp: payload.timestamp,
-      type: payload.type
-    })
+    if (conversationId) {
+      saveMessage(conversationId, "assistant", payload.data.content, payload.type).catch(err =>
+        logger.error("[WS] Failed to save question:", err)
+      );
+    }
     if (!projectConns) return logger.warn('no clients for ', projectId);
     for (const ws of projectConns) {
       if (ws.readyState === 1) {

@@ -1,8 +1,9 @@
 // src/infrastructure/index.ts
 import { memoryService, embeddingService } from "../memory";
 import { fsManager } from "../fs";
-import { chatDB } from "../db/chatStorage";
+import { initChatTables } from "../db/postgres";
 import { initMongoDB } from "../db/mongodb/schema";
+import { connectToPostgres, closePostgres } from "../db/postgres";
 import { logger } from "../utils/logger";
 
 /**
@@ -13,12 +14,12 @@ export async function initializeInfrastructure(): Promise<void> {
 
     try {
         // 1. MongoDB
-        logger.info("[1/4] 📊 Connecting to MongoDB...");
+        logger.info("[1/5] 📊 Connecting to MongoDB...");
         await initMongoDB();
         logger.info("✅ MongoDB connected\n");
 
         // 2. ChromaDB & Memory System (with OpenAI embeddings)
-        logger.info("[2/4] 🧠 Initializing Memory System (ChromaDB + Embeddings)...");
+        logger.info("[2/5] 🧠 Initializing Memory System (ChromaDB + Embeddings)...");
         await memoryService.initialize();
 
         const memoryHealth = await memoryService.healthCheck();
@@ -33,14 +34,19 @@ export async function initializeInfrastructure(): Promise<void> {
         logger.info("✅ Memory system ready\n");
 
         // 3. File System Manager
-        logger.info("[3/4] 📁 Initializing File System Manager...");
+        logger.info("[3/5] 📁 Initializing File System Manager...");
         const fsStats = await fsManager.getStats();
         logger.info(`✅ Workspace ready (${fsStats.projects} projects)\n`);
 
-        // 4. Chat Database (SQLite)
-        logger.info("[4/4] 💬 Initializing Chat Database...");
-        const chatStats = chatDB.getStats();
-        logger.info(`✅ Chat DB ready (${chatStats.totalMessages} messages)\n`);
+        // 4. PostgreSQL (Chat Storage)
+        logger.info("[4/5] 🐘 Connecting to PostgreSQL...");
+        await connectToPostgres();
+        logger.info("✅ PostgreSQL connected\n");
+
+        // 5. Chat Tables (PostgreSQL)
+        logger.info("[5/5] 💬 Initializing Chat Tables...");
+        await initChatTables();
+        logger.info("✅ Chat tables ready\n");
 
         logger.info("✅ Infrastructure initialized successfully!\n");
 
@@ -75,12 +81,8 @@ async function printInfrastructureSummary(): Promise<void> {
     logger.info(`   Files: ${fsStats.totalFiles}`);
     logger.info(`   Size: ${(fsStats.totalSize / 1024 / 1024).toFixed(2)} MB\n`);
 
-    // Chat stats
-    const chatStats = chatDB.getStats();
-    logger.info("💬 Chat Database:");
-    logger.info(`   Messages: ${chatStats.totalMessages}`);
-    logger.info(`   Projects: ${chatStats.projects}`);
-    logger.info(`   DB Size: ${(chatStats.databaseSize / 1024).toFixed(2)} KB\n`);
+    logger.info("🐘 PostgreSQL:");
+    logger.info(`   Status: ✅ Connected (Chat + Storage)\n`);
 
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
@@ -92,8 +94,8 @@ export async function shutdownInfrastructure(): Promise<void> {
     logger.info("\n🛑 Shutting down infrastructure...");
 
     try {
-        chatDB.close();
-        logger.info("✅ Chat DB closed");
+        await closePostgres();
+        logger.info("✅ PostgreSQL closed");
 
         logger.info("✅ Infrastructure shutdown complete\n");
     } catch (error) {
@@ -104,4 +106,3 @@ export async function shutdownInfrastructure(): Promise<void> {
 // Export services for easy access
 export { memoryService, embeddingService } from "../memory";
 export { fsManager } from "../fs";
-export { chatDB } from "../db/chatStorage";

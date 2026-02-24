@@ -6,6 +6,7 @@ import { Context } from "../../types/context";
 import { Event } from "../../types/events";
 import { wsManager } from "../../../websocket/manager";
 import { memoryService } from "../../../memory";
+import { saveMessage } from "../../../db/postgres";
 
 // Import types
 import { createInitialUIUXData, UIUXData, UIUX_CONFIDENCE_THRESHOLD, KeyScreen, ScreenVariant, ScreenFeedback } from "./types";
@@ -18,8 +19,7 @@ import { identifyKeyScreens, generateScreenVariants, generateAllVariantsParallel
 import { extractDesignTokens } from "./designTokens";
 import { generateStyleGuide } from "./styleGuide";
 import { generateScreen2Artifacts } from "./artifacts";
-import { generatePrototype } from "./prototypeGenerator";
-import { refineCommonComponents } from "./componentRefiner";
+
 
 export class UIUXHandler extends BaseHandler {
 
@@ -46,9 +46,7 @@ export class UIUXHandler extends BaseHandler {
             case "create_variant":
                 this.onCreateVariant(context, event);
                 break;
-            case "refine_components":
-                this.onRefineComponents(context, event);
-                break;
+
             case "complete_screen2":
                 this.onCompleteScreen2(context);
                 break;
@@ -276,7 +274,7 @@ export class UIUXHandler extends BaseHandler {
             });
 
             wsManager.sendMessage(context.projectId, {
-                message: `✅ Generated **${keyScreens.length} screens** with ${allVariants.length} total variants!\n\nReview the options above and approve your favorites. Once you're happy with all screens, I'll extract the design tokens and create your style guide.`
+                message: `✅ Generated **${keyScreens.length} screens** with ${allVariants.length} total variants!\n\nReview the options above and select your favorites. Once you're happy with all screens, I'll extract the design tokens and create your style guide.`
             });
 
             log(`Parallel generation complete: ${keyScreens.length} screens, ${allVariants.length} variants`);
@@ -352,18 +350,18 @@ export class UIUXHandler extends BaseHandler {
                 }
             }
         } else if (result.moveToNext) {
-            // In parallel mode, check if all screens are approved
+            // In parallel mode, check if all screens are selected
             const uiuxData = context.planningData?.uiuxData;
             if (uiuxData) {
                 const totalScreens = uiuxData.keyScreens.length;
-                const approvedCount = uiuxData.approvedScreens.length;
+                const selectedCount = uiuxData.selectedScreens.length;
 
                 wsManager.sendMessage(context.projectId, {
-                    message: `✅ Screen approved!(${approvedCount} / ${totalScreens})`
+                    message: `✅ Screen selected!(${selectedCount} / ${totalScreens})`
                 });
 
-                // If all screens approved, move to token extraction
-                if (approvedCount >= totalScreens) {
+                // If all screens selected, move to token extraction
+                if (selectedCount >= totalScreens) {
                     await this.startTokenExtractionPhase(context);
                 }
             }
@@ -375,7 +373,7 @@ export class UIUXHandler extends BaseHandler {
     // ==========================================
 
     private async startTokenExtractionPhase(context: Context): Promise<void> {
-        wsManager.sendFiller(context.projectId, 'Extracting design tokens from approved screens...');
+        wsManager.sendFiller(context.projectId, 'Extracting design tokens from selected screens...');
 
         try {
             const tokens = await extractDesignTokens(context);
@@ -389,9 +387,8 @@ export class UIUXHandler extends BaseHandler {
                 message: `✅ ** Design tokens extracted! **\n\nI've captured your color palette, typography, spacing, and component styles. Now generating your complete style guide...`
             });
 
-            // Generate style guide and move to Prototype Phase
-            // await this.completeScreen2(context); // OLD FLOW
-            await this.startPrototypePhase(context); // NEW FLOW
+            // Generate style guide and complete Screen 2
+            await this.completeScreen2(context);
 
         } catch (error: any) {
             log(`Error extracting tokens: ${error.message}`);
@@ -402,44 +399,12 @@ export class UIUXHandler extends BaseHandler {
     }
 
     // ==========================================
-    // PHASE 5.5: PROTOTYPE & REFINEMENT
-    // ==========================================
-
-    private async startPrototypePhase(context: Context): Promise<void> {
-        wsManager.sendFiller(context.projectId, 'Assembling interactive prototype...');
-
-        try {
-            const prototypeHTML = await generatePrototype(context);
-
-            wsManager.broadcast(context.projectId, {
-                type: "prototype_ready",
-                timestamp: new Date().toISOString(),
-                data: {
-                    message: `🚀 **Prototype Ready!**\n\nI've assembled your screens into an interactive prototype. You can now:\n1. **Refine Components**: Make global changes (e.g., "Make navbar dark")\n2. **Complete Design**: Finalize Screen 2`,
-                    url: 'design/prototype.html',
-                    htmlContent: prototypeHTML
-                }
-            });
-
-            if (context.planningData?.uiuxData) {
-                context.planningData.uiuxData.currentPhase = 'prototype';
-            }
-
-        } catch (error: any) {
-            log(`Error generating prototype: ${error.message}`);
-            wsManager.sendMessage(context.projectId, {
-                message: `⚠️ Error generating prototype: ${error.message}. You can still complete the stage.`
-            });
-        }
-    }
-
-    // ==========================================
     // VARIANT CHAT - Contextual LLM Discussion
     // ==========================================
 
     private async onVariantChat(context: Context, event: Event): Promise<void> {
         const payload = event.payload.payload || event.payload;
-        let { screenName, variant, message, mode } = payload;
+        let { screenName, variant, message, mode, chatId } = payload;
 
         // Default to 'ask' if mode is not specified (backwards compatibility)
         if (!mode) {
@@ -531,9 +496,42 @@ Generate the MODIFIED HTML with the change applied. Respond with JSON:
                     return;
                 }
 
-                // Update variant in memory
+                // Push current content as a version before updating
+                if (!targetVariant.versions) {
+                    // First edit — save V1 (the original)
+                    targetVariant.versions = [{
+                        version: 1,
+                        htmlContent: targetVariant.htmlContent,
+                        cssContent: targetVariant.cssContent,
+                        deviceScreens: targetVariant.deviceScreens,
+                        description: targetVariant.description,
+                        timestamp: new Date().toISOString()
+                    }];
+                    targetVariant.version = 1;
+                }
+
+                // Save current as previous version
+                const prevVersion = targetVariant.version || 1;
+                const newVersion = prevVersion + 1;
+
+                // Push a new version entry
+                targetVariant.versions.push({
+                    version: newVersion,
+                    htmlContent: result.html,
+                    cssContent: '',
+                    deviceScreens: {
+                        mobile: { htmlContent: result.html, cssContent: '' },
+                        tablet: { htmlContent: result.html, cssContent: '' },
+                        pc: { htmlContent: result.html, cssContent: '' }
+                    },
+                    description: result.description,
+                    timestamp: new Date().toISOString()
+                });
+
+                // Update current to latest
                 targetVariant.htmlContent = result.html;
                 targetVariant.description = result.description;
+                targetVariant.version = newVersion;
                 targetVariant.deviceScreens = {
                     mobile: { htmlContent: result.html, cssContent: '' },
                     tablet: { htmlContent: result.html, cssContent: '' },
@@ -544,9 +542,9 @@ Generate the MODIFIED HTML with the change applied. Respond with JSON:
                 const { setCachedUIUXStage, UIUXCacheKey } = await import("./stageCache");
                 setCachedUIUXStage(context, UIUXCacheKey.SCREEN_VARIANTS, uiuxData.screenVariants);
 
-                log(`✅ Updated ${screenName} Variant ${variant} in memory + cache`);
+                log(`✅ Updated ${screenName} Variant ${variant} to V${newVersion} in memory + cache`);
 
-                // Broadcast update to client
+                // Broadcast update to client with versions
                 wsManager.broadcast(context.projectId, {
                     type: "variant_updated",
                     timestamp: new Date().toISOString(),
@@ -554,19 +552,17 @@ Generate the MODIFIED HTML with the change applied. Respond with JSON:
                         screenName,
                         variant,
                         htmlContent: result.html,
-                        description: result.description
+                        description: result.description,
+                        version: newVersion,
+                        versions: targetVariant.versions,
+                        status: targetVariant.status
                     }
                 });
 
-                // Also send confirmation message
-                wsManager.sendMessage(context.projectId, {
-                    message: `✅ **Updated!** ${result.description}`
-                });
-
-                log(`Variant update broadcast for ${screenName} ${variant}`);
+                log(`Variant update broadcast for ${screenName} ${variant} (V${newVersion})`);
 
             } else {
-                // ASK MODE: Conversational response (original behavior)
+                // ASK MODE: Conversational response with history
                 wsManager.sendFiller(context.projectId, 'Analyzing variant...');
 
                 const systemPrompt = `You are an expert UI/UX designer discussing a specific screen variant with a user.
@@ -589,16 +585,45 @@ Be specific, actionable, and reference the actual HTML/CSS when relevant.`;
 ${targetVariant.htmlContent}
 \`\`\`
 
-# User Question/Request
-${message}`;
+The user wants to discuss this variant. Answer based on the HTML above.`;
+
+                // Build messages: system + variant context + conversation history + current message
+                const llmMessages: { role: string; content: string }[] = [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: variantContext },
+                    { role: 'assistant', content: 'I can see the variant HTML. How can I help you with this design?' },
+                ];
+
+                // Load previous conversation from PostgreSQL
+                if (chatId) {
+                    try {
+                        const { getMessages } = await import("../../../db/postgres");
+                        const history = await getMessages(chatId);
+                        for (const msg of history) {
+                            const rawContent = typeof msg.content === 'string'
+                                ? JSON.parse(msg.content)
+                                : msg.content;
+                            const text = typeof rawContent === 'string'
+                                ? rawContent
+                                : (rawContent.message || rawContent.content || JSON.stringify(rawContent));
+                            llmMessages.push({ role: msg.role, content: text });
+                        }
+                    } catch (err: any) {
+                        log(`Could not load chat history: ${err.message}`);
+                    }
+                }
+
+                // Add current user message (not yet in DB — it was just saved by index.ts)
+                // Check if last message in history is already this one to avoid duplication
+                const lastMsg = llmMessages[llmMessages.length - 1];
+                if (!(lastMsg.role === 'user' && lastMsg.content === message)) {
+                    llmMessages.push({ role: 'user', content: message });
+                }
 
                 const response = await callLLMWithLogging(
                     context.projectId,
                     `Variant Chat: ${screenName} ${variant}`,
-                    [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: variantContext }
-                    ],
+                    llmMessages,
                     { temperature: 0.7, max_tokens: 2000 }
                 );
 
@@ -610,17 +635,25 @@ ${message}`;
                         screenName,
                         variant,
                         message: response.content,
-                        role: 'assistant'
+                        role: 'assistant',
+                        chatId
                     }
                 });
+
+                // Persist assistant response to database
+                if (chatId) {
+                    saveMessage(chatId, 'assistant', response.content).catch(
+                        err => log(`Failed to save assistant message: ${err.message}`)
+                    );
+                }
 
                 log(`Variant chat response sent for ${screenName} ${variant}`);
             }
 
         } catch (error: any) {
-            log(`Error in variant chat: ${error.message}`);
+            log(`Error in variant chat: ${error.message} `);
             wsManager.sendMessage(context.projectId, {
-                message: `❌ Error: ${error.message}`
+                message: `❌ Error: ${error.message} `
             });
         }
     }
@@ -631,7 +664,7 @@ ${message}`;
      */
     private async onCreateVariant(context: Context, event: Event): Promise<void> {
         const payload = event.payload.payload || event.payload;
-        const { screenName, description } = payload;
+        const { screenName, description, referenceVariantId } = payload;
 
         if (!screenName || !description) {
             wsManager.sendMessage(context.projectId, { message: "❌ Screen name and description are required." });
@@ -651,17 +684,31 @@ ${message}`;
             );
             const nextLabel = String.fromCharCode(65 + existingVariants.length); // A=65, B=66, C=67, ...
 
-            log(`Creating on-demand variant ${nextLabel} for ${screenName}: "${description}"`);
+            // Look up reference variant HTML if provided
+            let referenceHTML: string | undefined;
+            if (referenceVariantId) {
+                const refVariant = uiuxData.screenVariants.find(
+                    (v: ScreenVariant) => v.id === referenceVariantId
+                );
+                if (refVariant) {
+                    referenceHTML = refVariant.htmlContent;
+                    log(`Using reference variant ${refVariant.variant} (${referenceVariantId})`);
+                } else {
+                    log(`Reference variant not found: ${referenceVariantId} `);
+                }
+            }
+
+            log(`Creating on - demand variant ${nextLabel} for ${screenName}: "${description}"`);
             wsManager.sendLog(context.projectId, `🎨 Creating variant ${nextLabel} for ${screenName}...`);
 
             const variant = await generateOnDemandVariant(
-                context, screenName, nextLabel, description
+                context, screenName, nextLabel, description, referenceHTML
             );
 
             if (variant) {
                 // Add to the screen variants collection
                 uiuxData.screenVariants.push(variant);
-                log(`On-demand variant ${nextLabel} added for ${screenName}`);
+                log(`On - demand variant ${nextLabel} added for ${screenName}`);
             } else {
                 wsManager.sendMessage(context.projectId, {
                     message: `❌ Failed to generate variant for ${screenName}.`
@@ -669,43 +716,14 @@ ${message}`;
             }
 
         } catch (error: any) {
-            log(`Error creating variant: ${error.message}`);
+            log(`Error creating variant: ${error.message} `);
             wsManager.sendMessage(context.projectId, {
-                message: `❌ Error: ${error.message}`
+                message: `❌ Error: ${error.message} `
             });
         }
     }
 
-    private async onRefineComponents(context: Context, event: Event): Promise<void> {
-        const payload = event.payload.payload || event.payload;
-        const instructions = payload.instructions;
 
-        if (!instructions) {
-            wsManager.sendMessage(context.projectId, { message: "❌ No refinement instructions provided." });
-            return;
-        }
-
-        try {
-            if (context.planningData?.uiuxData) {
-                context.planningData.uiuxData.currentPhase = 'refinement';
-            }
-
-            await refineCommonComponents(context, instructions);
-
-            // Re-generate prototype with updates
-            await this.startPrototypePhase(context);
-
-        } catch (error: any) {
-            log(`Error refining components: ${error.message}`);
-            wsManager.sendMessage(context.projectId, {
-                message: `❌ Error during refinement: ${error.message}`
-            });
-        }
-    }
-
-    // ==========================================
-    // PHASE 6: COMPLETION
-    // ==========================================
 
     private async completeScreen2(context: Context): Promise<void> {
         wsManager.sendFiller(context.projectId, 'Generating design system artifacts...');
@@ -727,7 +745,7 @@ ${message}`;
                 type: "screen2_complete",
                 timestamp: new Date().toISOString(),
                 data: {
-                    message: "🎉 **UI/UX Design Complete!**\n\nYour design system is ready:\n- `ui-style-guide.md`\n- `design-tokens.json`\n- Approved screen previews\n- Inspiration gallery\n\nReady for Technical Research (Screen 3)!",
+                    message: "🎉 **UI/UX Design Complete!**\n\nYour design system is ready:\n- `ui - style - guide.md`\n- `design - tokens.json`\n- Selected screen previews\n- Inspiration gallery\n\nReady for Technical Research (Screen 3)!",
                     artifacts: context.artifacts,
                     confidence: 100
                 }
@@ -736,9 +754,9 @@ ${message}`;
             log(`Screen 2 complete for ${context.projectId}`);
 
         } catch (error: any) {
-            log(`Error completing Screen 2: ${error.message}`);
+            log(`Error completing Screen 2: ${error.message} `);
             wsManager.sendMessage(context.projectId, {
-                message: `❌ Error generating artifacts: ${error.message}`
+                message: `❌ Error generating artifacts: ${error.message} `
             });
         }
     }
