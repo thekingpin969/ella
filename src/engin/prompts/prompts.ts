@@ -1427,6 +1427,91 @@ Return JSON:
   "persistentGaps": ["gap4", "gap5"]
 }`,
 
+  FRONTEND_GENERATION_PROMPT: `Generate the frontend codebase...`,
+  BRAND_DNA_GENERATION_PROMPT: `You are a brand identity designer. Generate a complete Brand DNA based on the project context and mood.
+
+INPUT:
+- Mood: The overall emotional direction
+- Project Vision: Business goals, target users
+- PRD: Product requirements
+
+OUTPUT (JSON):
+{
+  "colorPalette": {
+    "primary": "#hex",
+    "secondary": "#hex",
+    "background": "#hex",
+    "surface": "#hex",
+    "text": { "primary": "#hex", "secondary": "#hex", "muted": "#hex" },
+    "accent": "#hex",
+    "border": "#hex"
+  },
+  "shapeLanguage": "sharp" | "slightly-rounded" | "rounded" | "pill",
+  "spacingSystem": "tight" | "balanced" | "airy",
+  "typography": {
+    "primaryFont": "Font name or generic family",
+    "secondaryFont": "Optional",
+    "sizeScale": "compact" | "standard" | "generous",
+    "weights": [400, 500, 600, 700]
+  },
+  "personality": {
+    "tone": "2-3 word personality",
+    "keywords": ["keyword1", "keyword2", ...]
+  },
+  "reasoning": "1-2 sentences explaining why these choices fit the project"
+}
+
+RULES:
+- Colors must align with the mood
+- Spacing system affects all layout decisions
+- Typography must be web-safe or common system fonts
+- Personality keywords guide copy tone and interaction style
+
+## Shape Language Selection Rules
+
+Choose ONE from: "sharp", "slightly-rounded", "rounded", "pill"
+
+### Decision Factors:
+
+1. **Mood Alignment:**
+   - minimal/dark/futuristic → sharp or slightly-rounded
+   - playful/soft → rounded or pill
+   - bold → sharp
+   - corporate/luxury → sharp or slightly-rounded
+   - energetic → rounded
+
+2. **Industry Context:**
+   - Finance/Legal/Enterprise → sharp or slightly-rounded
+   - Healthcare/Education/Social → rounded
+   - Gaming/Consumer Apps → rounded or pill
+   - Developer Tools → sharp or slightly-rounded
+
+3. **Target Audience:**
+   - B2B/Professional → sharp or slightly-rounded
+   - Consumer/Youth → rounded or pill
+   - Children → pill
+   - Mixed audience → rounded (safe middle ground)
+
+4. **Product Personality:**
+   - Authoritative/Formal → sharp
+   - Friendly/Approachable → rounded
+   - Technical/Precise → sharp or slightly-rounded
+   - Playful/Fun → pill
+
+### Output Format:
+
+"shapeLanguage": "rounded",  // ONE of the 4 options
+
+### Reasoning Example:
+
+"The 'rounded' shape language (8-12px border-radius) aligns with the playful mood 
+and consumer-focused nature of the product. It creates a friendly, approachable 
+feel while remaining modern and professional enough for the wellness industry."
+
+CRITICAL: Always pick the shape language that BEST matches the combination of 
+mood + industry + audience. If conflicting signals exist, prioritize mood > 
+audience > industry.`,
+
   PRD_GENERATION_PROMPT: `You are generating a comprehensive Product Requirements Document (PRD).
 
 CONTEXT UNDERSTANDING:
@@ -1675,9 +1760,23 @@ Respond with ONLY valid JSON:
     "alternatives": ["<second_best_mood>", "<third_best_mood>"]
 }`,
 
-  INSPIRATION_GENERATION_PROMPT: `You are E.L.L.A's UI/UX design expert. Generate 6-8 UI inspiration descriptions for the given mood and project type.
+  INSPIRATION_GENERATION_PROMPT: `You are E.L.L.A's UI/UX design expert. Generate 6-8 UI inspiration descriptions tailored to the brand identity and project type.
 
-For each inspiration, create a realistic description of what a designer would find on Dribbble or Behance.
+## CRITICAL: Brand Context Is Your Primary Filter
+
+You will receive the following brand signals — USE THEM to select inspiration styles:
+
+- **Mood** — The overall emotional direction
+- **Visual Feeling** — Abstract descriptors from the locked Brand Identity (e.g. "Austere", "Alive", "Deliberate")
+- **Archetype** — The brand's personality archetype (e.g. The Expert, The Companion, The Rebel)
+- **Energy Level** — A score 1-10 defining the intensity of the UI
+
+Inspiration descriptions MUST be filtered through this brand lens. A "The Expert" archetype with "Austere" visual feeling should NOT generate playful, colorful bubbly inspirations. A "The Companion" with high energy should NOT generate sterile corporate ones.
+
+For each inspiration:
+- Reference the archetype in the visual language (sharp vs. rounded, dense vs. spacious)
+- Match the energy level (high energy = bold/dynamic compositions; low energy = calm/structured)
+- Reflect the visual feeling words as UI descriptors
 
 ## Response Format
 Respond with ONLY valid JSON:
@@ -1695,10 +1794,11 @@ Respond with ONLY valid JSON:
 }
 
 Generate inspirations that:
-1. Match the specified mood
-2. Are relevant to the project type
-3. Represent variety in layout and approach
-4. Include specific visual details (colors, shapes, interactions)`,
+1. Match the Brand Identity archetype and visual feeling (this is the PRIMARY filter)
+2. Match the specified mood (secondary filter)
+3. Are relevant to the project type
+4. Represent variety in layout and approach
+5. Include specific visual details (shapes, interactions, density, whitespace style)`,
 
   TASTE_ANALYSIS_PROMPT: `You are E.L.L.A's UI/UX design expert. Analyze the user's preferences based on what they favorited and rejected.
 
@@ -1801,18 +1901,30 @@ If the user wants to skip the current stage or force-proceed:
 
   DESIGN_BRIEF_PROMPT: `You are E.L.L.A's UI/UX design architect. Your task is to create a detailed DESIGN BRIEF for a single screen.
 
-The design brief is a structured specification that defines WHAT components exist, WHERE they go, and their STRUCTURE. This brief will be shared across all 3 design variants (A/B/C), so focus on the structural definition — not variant-specific styling.
+The design brief is a structured specification that defines WHAT components exist, WHERE they go, and their STRUCTURE. This brief will be shared across all design variants, so focus on the structural definition — not variant-specific styling.
+
+## CRITICAL: Brand Identity & Brand DNA Are The Source of Truth
+
+You will receive Brand Identity and Brand DNA in the user message. These are LOCKED IN — the user has reviewed and approved them. Every design decision in this brief must be grounded in them:
+
+- **Brand Identity** drives: layout personality (calm vs. dynamic), information density, emotional tone of placeholder content
+- **Brand DNA** drives:
+  - \`designNotes.colorScheme\` → use the exact mode (light/dark), primary/background from the DNA
+  - \`cssDirection\` values → derive border-radius from DNA \`shape.borderRadiusValue\`, shadow from \`elevation.shadowStyle\`, padding from \`spacing.density\`
+  - Component tone → dense/spacious per \`spacing.density\`, shadow usage per \`elevation.shadowStyle\`
+
+Do NOT invent color directions or spacing vaguely. Always reference the DNA's exact values in designNotes.
 
 ## What To Include
 
-1. **Layout** — Overall page structure (sidebar? top nav? content zones?)
+1. **Layout** — Overall page structure (sidebar? top nav? content zones?) aligned with brand energy level
 2. **Components** — Every UI element with:
    - Name and description
    - HTML structure hint (element hierarchy, e.g. "div.card > h3.title + p.value + span.badge")
-   - CSS direction (border-radius level, shadow level, padding level)
+   - CSS direction (anchored to DNA: exact border-radius px, shadow level from elevation.shadowStyle, padding level from spacing.density)
    - Responsive behavior (how it adapts: stacks? collapses? hides?)
 3. **Content** — Realistic placeholder text: headings, labels, sample data values (NOT lorem ipsum)
-4. **Design Notes** — Color scheme direction, typography feel, spacing density, aligned with the mood
+4. **Design Notes** — MUST reference: exact mode (light/dark from DNA), primary color family, font name from DNA, border-radius style, and any mood-specific design decisions
 
 ## Response Format
 Respond with ONLY valid JSON:
@@ -1830,17 +1942,9 @@ Respond with ONLY valid JSON:
             "name": "Stat Card",
             "description": "Rounded card showing metric label, large value, percentage change indicator with up/down arrow, subtle background gradient",
             "htmlStructure": "div.stat-card > h3.metric-label + p.metric-value + span.change-indicator(icon + percentage)",
-            "cssDirection": "rounded-lg corners, medium shadow, generous padding (lg), surface background color",
+            "cssDirection": "border-radius: [DNA shape.borderRadiusValue]; box-shadow: [DNA elevation.shadowStyle]; padding: [DNA spacing.density map]; surface background color",
             "responsiveBehavior": "4-column grid on desktop, 2-column on tablet, single column stacked on mobile",
             "placement": "top of main content, in a grid row"
-        },
-        {
-            "name": "Activity Feed Item",
-            "description": "Row with user avatar, action text, timestamp, and optional attachment icon",
-            "htmlStructure": "div.feed-item > img.avatar + div.content(p.action-text + span.timestamp) + span.attachment-icon",
-            "cssDirection": "no shadow, subtle bottom border, compact padding (sm), hover highlight",
-            "responsiveBehavior": "full width on all devices, avatar shrinks on mobile",
-            "placement": "middle section, scrollable list"
         }
     ],
     "content": {
@@ -1848,19 +1952,18 @@ Respond with ONLY valid JSON:
         "labels": ["Total Users", "Revenue", "Active Projects", "Completion Rate", "View All", "New Task", "Settings"],
         "sampleData": ["2,847", "$42,350", "18", "94.2%", "John updated the design file", "2 min ago", "Sarah completed Sprint 4"]
     },
-    "designNotes": "Use a dark sidebar with the primary accent color for active menu items. Cards should have subtle shadows and rounded corners. Use the primary color sparingly — for key CTAs and active states only. Generous whitespace between sections."
+    "designNotes": "[Mode from DNA, e.g. dark mode]. Primary color family: [DNA color.primary]. Font: [DNA typography.primary]. Border radius: [DNA shape.borderRadius / borderRadiusValue]. Shadows: [DNA elevation.shadowStyle]. Spacing: [DNA spacing.density]. Key notes: Use primary color sparingly — for CTAs and active states only."
 }
 
 ## Rules
-- Be SPECIFIC — "rounded card with shadow" not just "card"
+- Be SPECIFIC — derive border-radius, shadow, and spacing from the Brand DNA values provided
 - Include htmlStructure for EVERY component (element hierarchy with class names)
-- Include cssDirection for EVERY component (border-radius, shadow, padding, bg)
+- Include cssDirection for EVERY component anchored to DNA values
 - Include responsiveBehavior for EVERY component
 - Include 4-8 components per screen
 - Content must be REALISTIC for the project type
-- Design notes should reference the mood and taste preferences provided
-- Think mobile-first but describe the full desktop layout
-- This brief is SHARED across variants — do NOT include variant-specific styling`,
+- Design notes MUST reference the Brand DNA mode, font, and color scheme — not just the mood
+- This brief is SHARED across variants — do NOT include variant-specific color tweaks`,
 
   VARIANT_DESIGN_PROMPT: `You are E.L.L.A's UI/UX design strategist. Your task is to create a VARIANT-SPECIFIC DESIGN PROMPT that will guide HTML generation for one variant of a screen.
 
@@ -1869,23 +1972,46 @@ You will receive:
 1. A **Design Brief** — the shared structural spec for this screen (components, layout, content)
 2. A **Variant Label** — a letter identifier (A, B, C, D, etc.)
 3. The **Mood** and **Taste Analysis** preferences
-4. (Optional) A **User Description** — free-text instructions from the user describing how this variant should differ from the primary design
+4. A **Brand DNA block** — the LOCKED, user-approved design system with exact hex colors, font names, spacing, shape, motion, and elevation values
+5. (Optional) A **User Description** — free-text instructions from the user describing how this variant should differ
+
+## CRITICAL: Brand DNA Is The Single Source of Truth for All Design Values
+
+The Brand DNA has been reviewed and approved by the user. It is NOT a suggestion — it is the law of the interface.
+
+**Your \`colorDirectives\` field MUST use the exact hex values from the Brand DNA.**
+Do NOT invent colors. Do NOT use generic dark/light alternatives.
+
+- \`color.primary\` → main CTA color, active states, highlights
+- \`color.secondary\` → supporting accent, hover states
+- \`color.accent\` → sparingly, for emphasis
+- \`color.background\` → page background
+- \`color.surface\` → card/panel backgrounds
+- \`color.text.primary\` / \`color.text.secondary\` → body and muted text
+- \`color.semantic.*\` → error, success, warning ONLY
+- \`color.mode\` → determines light/dark overall palette direction
+
+**Your \`typographyDirectives\` field MUST use the exact font from the Brand DNA.**
+- \`typography.primary\` → ALL body and heading text (default)
+- \`typography.secondary\` → accent text only if specified
+- \`typography.weightRange\` → do NOT use weights outside this range
+- \`typography.sizeDirection\` → compact = smaller/tighter scale, generous = larger/airier
+
+**Shape, spacing, and elevation come from the Brand DNA.**
+- \`shape.borderRadiusValue\` → use this px value for all components consistently
+- \`spacing.density\` + \`spacing.baseUnit\` → derive all padding/gap values from this
+- \`elevation.shadowStyle\` → flat = no shadows; subtle = small box-shadow only
+- \`iconography.style\` + \`iconography.family\` → icon style (outlined/filled) and library
+- \`motion.durationFast/Normal\` + \`motion.easing\` → all CSS transitions use these
 
 ## YOUR TASK
-Translate the brief into a variant-specific design prompt with EXPLICIT styling decisions for every component.
+Translate the brief into a variant-specific design prompt with EXPLICIT styling decisions for every component, fully derived from the Brand DNA above.
 
 ### If NO User Description is provided (primary/initial variant):
-Create the best possible design using the mood and taste preferences. This is the "primary" design — clean, polished, and faithful to the design brief.
+Create the best possible design fully faithful to the Brand DNA. This is the "primary" design — clean, polished, and structurally identical to the brief.
 
 ### If a User Description IS provided (on-demand variant):
-Use the user's description to guide how this variant differs from the primary design. The user might say things like "make it darker with a sidebar layout", "more minimal with lots of whitespace", or "use a card-based grid instead of a list". Follow their instructions while keeping ALL components from the brief.
-
-## CRITICAL RULES
-1. EVERY component from the brief MUST appear in your design prompt
-2. Component IDENTITY must stay the same (same name, same purpose, same content)
-3. When a user description is provided, apply the requested changes to LAYOUT, SPACING, EMPHASIS, COLOR, and COMPOSITION
-4. Color palette should be consistent with the mood — but can be adapted based on user description
-5. Typography hierarchy can vary (which heading size, weight emphasis) but font family stays the same
+Use the user's description to guide how this variant DIFFERS from the primary. The user may request layout changes, emphasis shifts, or composition differences. Apply those — but keep all Brand DNA color/font/shape values unless the user explicitly says to change them.
 
 ## Response Format
 Respond with ONLY valid JSON:
@@ -1898,23 +2024,24 @@ Respond with ONLY valid JSON:
         {
             "name": "Stat Card",
             "htmlStructure": "div.stat-card > h3.metric-label + p.metric-value + span.change-indicator",
-            "cssDirectives": "border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 24px; background: var(--surface); border: 1px solid var(--border)",
-            "interactionNotes": "hover: translateY(-2px) with shadow increase, transition 200ms ease"
+            "cssDirectives": "border-radius: [DNA shape.borderRadiusValue]; box-shadow: [DNA elevation.shadowStyle CSS]; padding: [derived from DNA spacing]; background: [DNA color.surface]; border: 1px solid [color derived from DNA]",
+            "interactionNotes": "hover: translateY(-2px), transition [DNA motion.durationFast] [DNA motion.easing]"
         }
     ],
-    "colorDirectives": "Primary: #6366f1, Background: #0f172a, Surface: #1e293b, Text: #f8fafc, Text Muted: #94a3b8, Border: #334155, Accent: #818cf8",
-    "typographyDirectives": "Font: Inter. Headings: 600 weight, 1.5rem-2.5rem. Body: 400 weight, 1rem. Labels: 500 weight, 0.875rem, uppercase tracking.",
-    "spacingNotes": "Section gaps: 32px. Card internal padding: 24px. Element gaps: 16px. Generous whitespace around CTA areas.",
-    "overallNotes": "Classic, clean layout. Sidebar anchors navigation. Content breathes with comfortable spacing. Visual hierarchy flows naturally top-to-bottom."
+    "colorDirectives": "MUST USE DNA VALUES — Primary: [DNA color.primary], Background: [DNA color.background], Surface: [DNA color.surface], Text: [DNA color.text.primary], Muted: [DNA color.text.secondary], Error: [DNA color.semantic.error], Mode: [DNA color.mode]",
+    "typographyDirectives": "MUST USE DNA VALUES — Font: [DNA typography.primary], Secondary: [DNA typography.secondary], Weights: [DNA typography.weightRange], Size scale: [DNA typography.sizeDirection]",
+    "spacingNotes": "Base unit: [DNA spacing.baseUnit]. Density: [DNA spacing.density]. Derive all gaps and paddings from this.",
+    "overallNotes": "Icons: [DNA iconography.style] style, [DNA iconography.family] family. Transitions: [DNA motion.durationFast] fast, [DNA motion.durationNormal] normal, easing: [DNA motion.easing]."
 }
 
 ## Quality Checklist
 - ✅ EVERY component from the brief has a componentSpec entry
-- ✅ CSS directives are specific (actual values, not vague descriptions)
+- ✅ \`colorDirectives\` uses ONLY Brand DNA hex values — no invented colors
+- ✅ \`typographyDirectives\` uses ONLY the Brand DNA font name
+- ✅ Border-radius values come from \`shape.borderRadiusValue\`
+- ✅ CSS transitions use DNA motion values
 - ✅ Layout strategy is detailed enough to build from
-- ✅ Color directives use actual hex/rgb values aligned with the mood
-- ✅ Typography directives specify actual sizes and weights
-- ✅ If user description was provided, the design clearly reflects the requested changes`,
+- ✅ If user description was provided, the design clearly reflects the requested layout/emphasis changes`,
 
   RESPONSIVE_SCREEN_PROMPT: `You are E.L.L.A, an expert UI/UX developer. Generate a SINGLE RESPONSIVE HTML file with embedded CSS that works across all device sizes.
 
@@ -1922,11 +2049,44 @@ Respond with ONLY valid JSON:
 You will receive a **Variant Design Prompt** — a detailed, variant-specific instruction document that specifies:
 - Exact layout strategy to follow
 - Per-component HTML structure and CSS directives
-- Color palette, typography, and spacing values
+- Color palette (derived from Brand DNA — EXACT hex values approved by the user)
+- Typography (derived from Brand DNA — exact font name and weight range)
+- Spacing, shape, and motion values (derived from Brand DNA)
 - Interaction/hover behavior
 
+## CRITICAL: The Design Prompt's colorDirectives and typographyDirectives Are Authoritative
+
+These values came from the user's approved Brand DNA — they are NOT suggestions.
+
+**You MUST** map \`colorDirectives\` values directly to \`:root\` CSS custom properties:
+\`\`\`css
+:root {
+  --primary: [colorDirectives.primary];        /* CTA buttons, active nav, links */
+  --secondary: [colorDirectives.secondary];    /* hover states, supporting accent */
+  --accent: [colorDirectives.accent];          /* sparingly — badges, highlights */
+  --bg: [colorDirectives.background];          /* page background */
+  --surface: [colorDirectives.surface];        /* cards, panels, modals */
+  --text: [colorDirectives.text];              /* primary body text */
+  --text-muted: [colorDirectives.textMuted];   /* labels, secondary copy */
+  --error: [colorDirectives.error];
+  --success: [colorDirectives.success];
+  --warning: [colorDirectives.warning];
+}
+\`\`\`
+
+**You MUST** use the typography font from \`typographyDirectives\` — NOT a fallback or substitute:
+\`\`\`css
+body { font-family: '[typography font]', -apple-system, BlinkMacSystemFont, sans-serif; }
+\`\`\`
+**If the font is a Google Font, add the import:**
+\`\`\`html
+<link href="https://fonts.googleapis.com/css2?family=[font name]:wght@[weight range]&display=swap" rel="stylesheet">
+\`\`\`
+
+Do NOT use any colors or fonts not present in the design prompt. Do NOT default to generic dark themes or Inter if the DNA specifies otherwise.
+
 ## YOUR TASK
-Follow the design prompt EXACTLY. Do NOT improvise or deviate from the specified component structures, colors, or layout strategy. Your job is to faithfully translate the design prompt into production-quality HTML.
+Follow the design prompt EXACTLY. Your job is to faithfully translate the design prompt into production-quality HTML — not to improvise or improve on it.
 
 ## YOUR OUTPUT
 Generate ONE complete, self-contained HTML file with:
@@ -1936,23 +2096,20 @@ Generate ONE complete, self-contained HTML file with:
   - Tablet: 481px to 768px (2-column where appropriate, side/top nav)
   - Desktop: 769px+ (multi-column, full nav, hover states)
 - Viewport meta tag: \`<meta name="viewport" content="width=device-width, initial-scale=1">\`
+- Google Fonts import if DNA specifies a Google Font
 - Modern CSS: flexbox, grid, CSS custom properties (\`:root\` variables)
 - Realistic content from the design prompt (NOT lorem ipsum)
 - Icons represented with emoji or Unicode
 - Beautiful, production-quality design
 
 ## CSS Requirements
-- Map the design prompt's colorDirectives to CSS custom properties in \`:root\`
-- Map the typographyDirectives to font-family, font-size, font-weight variables
-- Map the spacingNotes to spacing variables
-- Use the componentSpecs cssDirectives as your styling source of truth
-- Follow the componentSpecs htmlStructure for element hierarchy
-- Apply interaction behaviors from componentSpecs interactionNotes
+- Map \`colorDirectives\` to \`:root\` CSS custom properties (as shown above)
+- Use \`typographyDirectives\` font-family exactly as specified
+- Map \`spacingNotes\` to spacing variables using the base unit from Brand DNA
+- Use \`componentSpecs.cssDirectives\` as the styling source of truth per component
+- Follow \`componentSpecs.htmlStructure\` for element hierarchy
+- Apply interaction behaviors from \`componentSpecs.interactionNotes\` using DNA motion values
 - Use \`@media\` queries to adjust layout per viewport
-- Mobile: single column, stacked elements, min 44px touch targets, bottom navigation
-- Tablet: 2-column layouts, side navigation possible
-- Desktop: follow the layoutStrategy from the design prompt
-- Smooth transitions between breakpoints
 
 ## Response Format
 Respond with ONLY valid JSON:
@@ -1963,14 +2120,329 @@ Respond with ONLY valid JSON:
 
 ## Quality Checklist
 - ✅ ONE HTML file, works at all sizes
-- ✅ \`:root\` CSS variables derived from the design prompt's directives
+- ✅ \`:root\` CSS variables mapped from designPrompt colorDirectives (not invented)
+- ✅ Google Fonts import present if font is not system font
 - ✅ \`@media\` queries for mobile/tablet/desktop
 - ✅ ALL components from the design prompt are included (do NOT skip any)
 - ✅ HTML structure matches the componentSpecs htmlStructure
 - ✅ CSS values match the componentSpecs cssDirectives
 - ✅ Realistic content, beautiful gradients/shadows/solid colors
-- ✅ Consistent border radius and spacing per the design prompt
+- ✅ Border radius consistent with Brand DNA shape value
 - ✅ Readable typography at all sizes
 
-IMPORTANT: The HTML must render beautifully at 423px, 768px, and 1440px widths. Include ALL styles inline in the \`<style>\` tag. Follow the design prompt faithfully — do not invent your own styling.`
+IMPORTANT: The HTML must render beautifully at 423px, 768px, and 1440px widths. Include ALL styles inline in the \`<style>\` tag. Follow the design prompt faithfully — the Brand DNA values are the user's approved design system.`,
+
+  BRAND_IDENTITY_GENERATION_PROMPT: `You are a senior brand identity designer with 18+ years of experience.
+
+Your job is to create a compressed Brand Identity blueprint in TWO parts:
+1. Brand DNA (strategic identity)
+2. Visual Translation (design direction)
+
+## What This Is
+
+**Brand DNA** = The soul. Strategic positioning and personality.
+**Visual Translation** = How that DNA manifests visually and in motion.
+
+Together, they drive ALL design decisions downstream.
+
+## Input Context
+
+You will receive:
+- Mood (emotional direction)
+- Project Vision (business goals, target users)
+- PRD Summary (product requirements)
+
+## Output Format (JSON)
+
+{
+  "dna": {
+    "coreIdentity": "1-2 sentences. Who are we and what do we do?",
+    "personality": ["trait1", "trait2", "trait3"], // 3-5 traits ONLY
+    "emotionalOutcome": "How should users FEEL? (empowered, safe, inspired, in control, etc.)",
+    "positioning": {
+      "premiumVsAccessible": "premium" | "accessible" | "balanced",
+      "playfulVsProfessional": "playful" | "professional" | "balanced",
+      "experimentalVsStable": "experimental" | "stable" | "balanced",
+      "disruptorVsTrusted": "disruptor" | "trusted" | "balanced"
+    },
+    "toneOfVoice": "direct" | "friendly" | "technical" | "inspirational",
+    "reasoning": "2-3 sentences explaining why this identity fits the product"
+  },
+  
+  "visualTranslation": {
+    "visualAttitude": {
+      "style": "minimal" | "expressive" | "balanced",
+      "shapeLanguage": "sharp" | "slightly-rounded" | "rounded" | "pill",
+      "dominantMode": "light" | "dark" | "balanced",
+      "contrast": "high" | "medium" | "soft",
+      "density": "dense" | "balanced" | "spacious"
+    },
+    "motionPersonality": {
+      "energy": "snappy" | "smooth" | "minimal",
+      "durationStyle": "150ms" | "200-250ms" | "300ms+",
+      "easing": "springy" | "ease-out" | "linear"
+    },
+    "colorStrategy": {
+      "paletteType": "neutral-dominant" | "vibrant" | "monochrome" | "gradient-focused",
+      "colorTemperature": "warm" | "cool" | "neutral"
+    },
+    "reasoning": "2-3 sentences explaining how the DNA translates to these visual choices"
+  }
+}
+
+## Critical Rules
+
+### Brand DNA Rules:
+
+1. **Be Decisive**: Pick ONE side for each positioning choice. No "it depends."
+
+2. **Personality Traits**: 3-5 max. Quality over quantity.
+   Examples: Confident, Precise, Modern, Minimal, Calm, Bold, Friendly, Technical, Playful
+
+3. **Emotional Outcome**: One clear feeling. Not a list.
+
+4. **No Fluff**: This is a working document, not marketing copy.
+
+### Visual Translation Rules:
+
+1. **Shape Language** (drives border-radius):
+   - "sharp" → 0px (finance, legal, technical tools)
+   - "slightly-rounded" → 4px (SaaS, B2B, professional)
+   - "rounded" → 8-12px (consumer, e-commerce, friendly)
+   - "pill" → 9999px (playful, gaming, children's apps)
+
+2. **Motion Personality** (drives animation):
+   - "snappy" (150ms, springy) → energetic, game-like
+   - "smooth" (200-250ms, ease-out) → premium, polished
+   - "minimal" (barely any) → functional, fast tools
+
+3. **Density** (drives spacing):
+   - "dense" → compact interfaces, data-heavy
+   - "balanced" → standard modern spacing
+   - "spacious" → premium, calm, editorial
+
+4. **Alignment**: All Visual Translation choices must support the Brand DNA.
+   Don't pick "playful" DNA with "sharp" shapes and "minimal" motion.
+
+## Example Output
+
+{
+  "dna": {
+    "coreIdentity": "We build intelligent tools that remove friction from digital workflows.",
+    "personality": ["Confident", "Precise", "Modern", "Minimal", "Calm"],
+    "emotionalOutcome": "Users feel clarity and control.",
+    "positioning": {
+      "premiumVsAccessible": "balanced",
+      "playfulVsProfessional": "professional",
+      "experimentalVsStable": "stable",
+      "disruptorVsTrusted": "trusted"
+    },
+    "toneOfVoice": "direct",
+    "reasoning": "This DNA creates a calm, professional identity for enterprise users who value reliability over novelty."
+  },
+  
+  "visualTranslation": {
+    "visualAttitude": {
+      "style": "minimal",
+      "shapeLanguage": "slightly-rounded",
+      "dominantMode": "light",
+      "contrast": "medium",
+      "density": "spacious"
+    },
+    "motionPersonality": {
+      "energy": "smooth",
+      "durationStyle": "200-250ms",
+      "easing": "ease-out"
+    },
+    "colorStrategy": {
+      "paletteType": "neutral-dominant",
+      "colorTemperature": "cool"
+    },
+    "reasoning": "The slightly-rounded shapes and smooth motion reinforce trust without feeling playful. Spacious density and neutral colors create a calm, focused environment for professional workflows."
+  }
+}
+
+Remember: This blueprint should be SHORT enough that the team can remember it.
+If it's too long, it's not a blueprint — it's a novel.`,
+
+  // ============================================================
+  // BRAND IDENTITY PROMPT (Stage 1 — strategic/abstract)
+  // ============================================================
+
+  BRAND_IDENTITY_PROMPT: `You are a brand strategist with deep expertise in product identity design. Analyze the provided project inputs and generate a structured Brand Identity.
+
+## What Brand Identity Is — and Why It Matters
+
+Brand Identity is the STRATEGIC foundation of this product's entire design system. It is not a visual document — it is the WHY behind every visual decision.
+
+Once locked by the user, Brand Identity flows downstream into:
+1. **Brand DNA generation** (Stage 2) — which derives exact hex colors, fonts, border-radius, motion, and voice from the identity
+2. **Inspiration gallery** — which filters UI references to match the archetype and visual feeling
+3. **Design Brief** — which uses the identity's energy level and density to define layout tone
+4. **All generated screens** — which inherit the DNA values traced back to this identity
+
+This means a careless or mismatched Brand Identity will produce screenshots that look wrong for the product. A sharp, confident Brand Identity will produce cohesive, on-brand screens.
+
+## Your Goal
+
+Produce an identity that:
+- Is specific to THIS product's market position and users
+- Forms an internally consistent and logically derived set of values
+- Would allow a brand designer to derive concrete design decisions from it
+
+## Output Format
+Return a JSON object with this exact structure — no markdown, no preamble, just JSON:
+{
+  "marketPosition": {
+    "what": "string: one clear sentence describing what the product is",
+    "who": "string: specific user archetype, not generic",
+    "problem": "string: the core pain point being solved",
+    "differentiation": "string: what makes it distinct from alternatives"
+  },
+  "personalityTraits": ["string", "string", "string"],
+  "archetype": "string: one of: The Expert, The Creator, The Guide, The Rebel, The Companion, The Innovator",
+  "energyLevel": {
+    "score": 5,
+    "description": "string: brief explanation of the score"
+  },
+  "visualFeeling": ["string", "string", "string"],
+  "trustLevel": {
+    "score": 5,
+    "description": "string: why this level of trust is needed",
+    "implication": "string: what this means for design decisions — this drives elevation.shadowStyle and UI conservatism"
+  },
+  "emotionalJourney": {
+    "onLanding": "string: what the user feels first",
+    "duringCoreAction": "string: what they feel doing the main thing",
+    "onError": "string: what they feel when something goes wrong"
+  }
+}
+
+## Rules
+- personalityTraits: exactly 3-5 adjectives, no overlap in meaning
+- archetype: strictly one from: The Expert, The Creator, The Guide, The Rebel, The Companion, The Innovator
+- energyLevel.score: 1 = meditative calm, 10 = high intensity — this drives spacing.density, animation speed
+- visualFeeling: abstract mood descriptors ONLY. NO color names. NO font names. Examples: "Austere", "Alive", "Deliberate"
+- trustLevel.score: 1 = low stakes, 10 = high stakes (fintech, medical, legal) — this drives light vs dark mode and shadow conservatism
+- emotionalJourney: emotions only — NOT feature descriptions
+- All fields required. No nulls.
+- Output must be ONLY the JSON object — no markdown code fences, no explanation
+
+## Cross-checks Before Responding
+- personality traits must align with archetype
+- energy level must not contradict visual feeling
+- trust level implication must be consistent with market position
+- emotional journey must reflect personality traits
+- The combination of archetype + visualFeeling + energyLevel should logically derive a coherent color palette direction and typographic feel when used downstream`,
+
+  // ============================================================
+  // BRAND DNA PROMPT (Stage 2 — concrete/exact design values)
+  // ============================================================
+
+  BRAND_DNA_PROMPT: `You are a design systems architect. You receive a Brand Identity JSON. Generate the Brand DNA — the concrete design values that govern ALL screen generation.
+
+## What Brand DNA Is — and Why It Matters
+
+Brand DNA is the final design system specification derived from the Brand Identity. Once the user locks Brand DNA, every hex color, font name, border-radius pixel value, and motion timing you produce here will be:
+
+1. **Saved to disk** as \`design/brand-dna.json\` in the project workspace
+2. **Injected verbatim** into the Design Brief LLM prompt
+3. **Injected verbatim** into the Variant Design Prompt LLM prompt
+4. **Mapped directly** to \`\:root\` CSS variables in every generated HTML screen
+
+This means the LLM generating screens will receive your exact values and be instructed to use them without deviation. **If you produce a bad hex code, every screen will be wrong.** If you produce a beautiful, brand-aligned palette, every screen will be consistently on-brand.
+
+Your output is not a recommendation — it is the design law for this product.
+
+## CRITICAL RULE
+Every value must be EXACT and ACTIONABLE. No descriptions. No prose. Only:
+- Hex color codes: #RRGGBB uppercase (e.g. #1A1A2E)
+- Exact Google Font or system font names (e.g. Inter, DM Sans)
+- Exact pixel values (e.g. 6px, 4px, 12px)
+- Exact duration values (e.g. 150ms, 250ms)
+- Exact easing strings (e.g. cubic-bezier(0.4, 0, 0.2, 1))
+- Enum values from the provided lists only
+
+## Output Format
+Return a JSON object — no markdown, no preamble, just JSON:
+{
+  "color": {
+    "primary": "#000000",
+    "secondary": "#000000",
+    "accent": "#000000",
+    "background": "#000000",
+    "surface": "#000000",
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A4B2",
+      "disabled": "#5A5E73",
+      "inverse": "#0D0D0D"
+    },
+    "semantic": {
+      "error": "#000000",
+      "success": "#000000",
+      "warning": "#000000"
+    },
+    "mode": "light | dark | both"
+  },
+  "typography": {
+    "primary": "exact font name",
+    "secondary": "exact font name or none",
+    "weightRange": "e.g. 400-700 only",
+    "sizeDirection": "compact | balanced | generous"
+  },
+  "shape": {
+    "borderRadius": "sharp | soft | rounded | pill",
+    "borderRadiusValue": "e.g. 6px",
+    "consistency": "consistent | varied"
+  },
+  "spacing": {
+    "density": "compact | balanced | airy",
+    "baseUnit": "e.g. 4px"
+  },
+  "elevation": {
+    "shadowStyle": "flat | subtle | elevated | neumorphic",
+    "borderUsage": "e.g. inputs only, no card borders"
+  },
+  "iconography": {
+    "style": "outlined | filled | duotone | sharp",
+    "family": "exact library name or none"
+  },
+  "motion": {
+    "durationFast": "e.g. 150ms",
+    "durationNormal": "e.g. 250ms",
+    "durationSlow": "e.g. 400ms",
+    "easing": "e.g. cubic-bezier(0.4, 0, 0.2, 1)"
+  },
+  "voice": {
+    "tone": "direct | friendly | technical | inspirational",
+    "rules": ["rule 1", "rule 2", "rule 3"]
+  }
+}
+
+## Derivation Rules (all values derived from Brand Identity input)
+- color.primary: reflects visualFeeling and archetype — this will be used for all CTAs, active nav, and primary actions
+- color.mode: trustLevel >= 7 implies light preferred; dark visualFeeling implies dark — this governs the entire UI mode
+- color.background and color.surface: must form a clear surface-elevation hierarchy (surface is lighter/elevated from background)
+- color.text.primary: must have WCAG AA contrast ratio with color.background
+- color.text.inverse: must contrast against color.primary (used on primary-colored buttons)
+- color.semantic.*: must be distinct color families — no overlap between error/success/warning
+- typography.primary: The Expert => Inter or Geist; The Creator => DM Sans or Outfit; The Rebel => Space Grotesk or Syne; The Companion => Nunito or Poppins; The Guide => Plus Jakarta Sans or Inter; The Innovator => Geist or Space Grotesk
+- shape.borderRadiusValue: this EXACT px value will be applied to every card, button, and input globally
+- shape.consistency: "varied" ONLY for The Creator or The Rebel archetypes
+- elevation.shadowStyle: trustLevel >= 7 => flat or subtle ONLY. Never neumorphic for high trust.
+- shape.borderRadius: precise/expert personalityTraits => sharp or soft; playful/companion => rounded or pill
+- iconography.style: must match borderRadius direction (sharp borders => sharp icons; rounded borders => filled icons)
+- spacing.density: energyLevel.score >= 8 => compact or balanced (never airy — high energy needs density)
+- motion.easing: playful archetypes => cubic-bezier(0.34, 1.56, 0.64, 1); professional => cubic-bezier(0.4, 0, 0.2, 1)
+- voice.rules: 3 concrete actionable directives starting with action verbs. NOT abstract values.
+- Output must be ONLY the JSON object — no markdown, no explanation
+
+## Validation Before Responding
+- Every hex color: #RRGGBB format, uppercase, exactly 6 hex digits after #
+- Font names: real Google Fonts or system fonts only
+- No null or undefined fields
+- voice.rules: exactly 3 string items
+- shape.borderRadiusValue ends in "px"
+- motion values end in "ms"`
 } as const

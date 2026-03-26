@@ -43,6 +43,16 @@ export async function searchInspirations(context: Context): Promise<InspirationI
 
     const mood = uiuxData.mood || 'minimal';
 
+    // Read from new split-stage Brand Identity (Stage 1)
+    const brandIdentity = uiuxData.brandIdentity;
+    const archetype = brandIdentity?.archetype || '';
+    const visualFeeling = brandIdentity?.visualFeeling || [];
+    const energyScore = brandIdentity?.energyLevel?.score ?? 5;
+
+    // Build inspiration query from identity signals
+    const visualContext = visualFeeling.length > 0 ? visualFeeling.join(', ') : mood;
+    const archetypeContext = archetype ? `${archetype} brand` : '';
+
     // Load project vision for context
     const visionStr = memoryService.getSession(context.projectId, 'initial_analysis');
     let projectContext = 'web application';
@@ -55,13 +65,13 @@ export async function searchInspirations(context: Context): Promise<InspirationI
         }
     }
 
-    // Generate inspirations via LLM (since we don't have real API access)
+    // Generate inspirations via LLM — filtered by archetype and visual feeling
     const response = await callLLMWithLogging(
         context.projectId,
         'Generate UI Inspirations',
         [
             { role: 'system', content: PROMPTS.INSPIRATION_GENERATION_PROMPT },
-            { role: 'user', content: `Mood: ${mood}\nProject: ${projectContext}` }
+            { role: 'user', content: `Mood: ${mood}\nVisual Feeling: ${visualContext}\nArchetype: ${archetypeContext}\nEnergy Level: ${energyScore}/10\nProject: ${projectContext}` }
         ],
         { temperature: 0.8, max_tokens: 2000 }
     );
@@ -116,7 +126,7 @@ export async function handleInspirationsRated(
 
     // Mark inspiration phase as locked
     uiuxData.inspirationLocked = true;
-    uiuxData.confidenceScore += 20; // Inspiration = 20%
+    uiuxData.confidenceScore += 10; // Inspiration = 10%
 
     // Analyze taste patterns
     const tasteAnalysis = await analyzeTastePatterns(context);
@@ -171,6 +181,9 @@ ${rejected.map(r => `- ${r.title}: ${r.description} (tags: ${r.tags.join(', ')})
 
 ## Selected Mood
 ${uiuxData.mood}
+
+## Established Brand Identity
+${uiuxData.brandIdentity ? JSON.stringify(uiuxData.brandIdentity, null, 2) : 'None'}
 `;
 
     const response = await callLLMWithLogging(

@@ -12,6 +12,8 @@ import * as fs from "fs";
  */
 export enum UIUXCacheKey {
     MOOD_RECOMMENDATION = "cache:mood_recommendation",
+    BRAND_IDENTITY = "cache:brand_identity",
+    BRAND_DNA_OUTPUT = "cache:brand_dna_output",
     KEY_SCREENS = "cache:key_screens",
     SCREEN_BRIEFS = "cache:screen_briefs",
     DESIGN_PROMPTS = "cache:design_prompts",

@@ -110,6 +110,113 @@ export interface TasteAnalysis {
 }
 
 // ==========================================
+// STAGE 1: BRAND IDENTITY TYPES (strategic / abstract)
+// ==========================================
+
+export type BrandArchetype =
+    | 'The Expert'
+    | 'The Creator'
+    | 'The Guide'
+    | 'The Rebel'
+    | 'The Companion'
+    | 'The Innovator';
+
+export interface BrandIdentity {
+    marketPosition: {
+        what: string;        // one clear sentence describing what the product is
+        who: string;         // specific user archetype
+        problem: string;     // core pain point
+        differentiation: string; // what makes it distinct
+    };
+    personalityTraits: string[];    // exactly 3–5 adjectives, no overlap in meaning
+    archetype: BrandArchetype;
+    energyLevel: {
+        score: number;              // 1 (meditative calm) – 10 (high intensity)
+        description: string;
+    };
+    visualFeeling: string[];        // 3 abstract mood descriptors — NO color names, NO font names
+    trustLevel: {
+        score: number;              // 1 (low stakes) – 10 (fintech/medical/legal)
+        description: string;
+        implication: string;        // what this means for design decisions
+    };
+    emotionalJourney: {
+        onLanding: string;          // what the user feels first
+        duringCoreAction: string;   // what they feel doing the main thing
+        onError: string;            // what they feel when something goes wrong
+    };
+}
+
+export interface BrandIdentityFeedback {
+    aspect: string;   // e.g. 'archetype', 'energyLevel', 'personalityTraits', 'trustLevel'
+    change: string;   // free text describing desired change
+}
+
+// ==========================================
+// STAGE 2: BRAND DNA TYPES (concrete / exact values)
+// ==========================================
+
+export interface BrandDNAOutput {
+    color: {
+        primary: string;        // exact hex e.g. '#1A1A2E'
+        secondary: string;      // exact hex
+        accent: string;         // exact hex
+        background: string;     // exact hex
+        surface: string;        // exact hex
+        text: {
+            primary: string;    // exact hex
+            secondary: string;  // exact hex
+            disabled: string;   // exact hex
+            inverse: string;    // exact hex
+        };
+        semantic: {
+            error: string;      // exact hex
+            success: string;    // exact hex
+            warning: string;    // exact hex
+        };
+        mode: 'light' | 'dark' | 'both';
+    };
+    typography: {
+        primary: string;        // exact font name e.g. 'Inter'
+        secondary: string;      // exact font name or 'none'
+        weightRange: string;    // e.g. '400–700 only'
+        sizeDirection: 'compact' | 'balanced' | 'generous';
+    };
+    shape: {
+        borderRadius: 'sharp' | 'soft' | 'rounded' | 'pill';
+        borderRadiusValue: string;  // exact value e.g. '6px'
+        consistency: 'consistent' | 'varied';
+    };
+    spacing: {
+        density: 'compact' | 'balanced' | 'airy';
+        baseUnit: string;       // exact value e.g. '4px'
+    };
+    elevation: {
+        shadowStyle: 'flat' | 'subtle' | 'elevated' | 'neumorphic';
+        borderUsage: string;    // e.g. 'inputs only, no card borders'
+    };
+    iconography: {
+        style: 'outlined' | 'filled' | 'duotone' | 'sharp';
+        family: string;         // exact name e.g. 'Lucide' or 'none'
+    };
+    motion: {
+        durationFast: string;   // e.g. '150ms'
+        durationNormal: string; // e.g. '250ms'
+        durationSlow: string;   // e.g. '400ms'
+        easing: string;         // e.g. 'cubic-bezier(0.4, 0, 0.2, 1)'
+    };
+    voice: {
+        tone: 'direct' | 'friendly' | 'technical' | 'inspirational';
+        rules: string[];        // 3 concrete writing rules
+    };
+}
+
+export interface BrandDNAFeedback {
+    aspect: string;   // e.g. 'color', 'typography', 'shape', 'spacing', 'motion'
+    change: string;   // free text describing desired change
+}
+
+// ==========================================
 // SCREEN GENERATION TYPES
 // ==========================================
 
@@ -338,12 +445,20 @@ export interface DesignTokens {
 
 export interface UIUXData {
     // Phase tracking
-    currentPhase: 'mood' | 'inspiration' | 'screens' | 'tokens' | 'complete';
+    currentPhase: 'mood' | 'brand_identity' | 'brand_dna' | 'inspiration' | 'screens' | 'tokens' | 'complete';
 
     // Mood
     mood?: Mood;
     moodLocked: boolean;
     moodReasoning?: string;
+
+    // Stage 1: Brand Identity (strategic/abstract)
+    brandIdentity?: BrandIdentity;
+    brandIdentityLocked: boolean;
+
+    // Stage 2: Brand DNA (concrete/exact values)
+    brandDNA?: BrandDNAOutput;
+    brandDNALocked: boolean;
 
     // Inspiration
     inspirations: InspirationItem[];
@@ -359,8 +474,6 @@ export interface UIUXData {
     // Design System
     designTokens?: DesignTokens;
 
-
-
     // Progress
     confidenceScore: number;
 }
@@ -373,7 +486,9 @@ export interface UIUXData {
 
 export const UIUX_CONFIDENCE_THRESHOLD = 90;
 export const MOOD_WEIGHT = 20;
-export const INSPIRATION_WEIGHT = 20;
+export const BRAND_IDENTITY_WEIGHT = 15; // Stage 1
+export const BRAND_DNA_WEIGHT = 15;      // Stage 2
+export const INSPIRATION_WEIGHT = 10;
 export const SCREENS_WEIGHT = 40;
 export const TOKENS_WEIGHT = 10;
 export const ARTIFACTS_WEIGHT = 10;
@@ -386,6 +501,8 @@ export function createInitialUIUXData(): UIUXData {
     return {
         currentPhase: 'mood',
         moodLocked: false,
+        brandIdentityLocked: false,
+        brandDNALocked: false,
         inspirations: [],
         inspirationLocked: false,
         keyScreens: [],

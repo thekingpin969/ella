@@ -32,6 +32,10 @@ const SCREEN2_EVENTS = [
     'start_uiux_design',
     'mood_selected',
     'inspirations_rated',
+    'brand_identity_feedback',
+    'lock_brand_identity',
+    'brand_dna_feedback',
+    'lock_brand_dna',
     'screen_feedback',
     'variant_chat',
     'create_variant',
@@ -157,7 +161,11 @@ export class PlanHandler extends BaseHandler {
     private onWebSocketMessage(context: Context, event: Event): void {
         const { message } = event.payload;
         log(event);
-        if (message.type === "user_message") {
+        // If the inner message type is a Screen 2 action, route to UIUXHandler
+        if (message && SCREEN2_EVENTS.includes(message.type)) {
+            const screen2Event = { ...event, name: message.type, payload: message };
+            this.uiuxHandler.handle(context, screen2Event as any);
+        } else if (message.type === "user_message") {
             handleUserMessage(context, message.content);
         }
     }

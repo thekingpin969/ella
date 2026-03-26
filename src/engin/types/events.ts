@@ -19,6 +19,10 @@ export type EventName =
     // Planning stage - Screen 2 (UI/UX)
     | "start_uiux_design"
     | "mood_selected"
+    | "brand_identity_feedback"
+    | "lock_brand_identity"
+    | "brand_dna_feedback"
+    | "lock_brand_dna"
     | "inspirations_rated"
     | "screen_feedback"
     | "variant_chat"

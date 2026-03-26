@@ -19,7 +19,9 @@ import { identifyKeyScreens, generateScreenVariants, generateAllVariantsParallel
 import { extractDesignTokens } from "./designTokens";
 import { generateStyleGuide } from "./styleGuide";
 import { generateScreen2Artifacts } from "./artifacts";
-
+import { generateBrandIdentity, handleBrandIdentityFeedback, lockBrandIdentity } from "./brandIdentity";
+import { generateBrandDNA, handleBrandDNAFeedback, lockBrandDNA } from "./brandDNA";
+import { BrandIdentityFeedback, BrandDNAFeedback } from "./types";
 
 export class UIUXHandler extends BaseHandler {
 
@@ -34,6 +36,21 @@ export class UIUXHandler extends BaseHandler {
             case "mood_selected":
                 this.onMoodSelected(context, event);
                 break;
+            // Stage 1: Brand Identity
+            case "brand_identity_feedback":
+                this.onBrandIdentityFeedback(context, event);
+                break;
+            case "lock_brand_identity":
+                this.onLockBrandIdentity(context);
+                break;
+            // Stage 2: Brand DNA
+            case "brand_dna_feedback":
+                this.onBrandDNAFeedback(context, event);
+                break;
+            case "lock_brand_dna":
+                this.onLockBrandDNA(context);
+                break;
+            // Legacy alias kept for backward compatibility
             case "inspirations_rated":
                 this.onInspirationsRated(context, event);
                 break;
@@ -46,7 +63,6 @@ export class UIUXHandler extends BaseHandler {
             case "create_variant":
                 this.onCreateVariant(context, event);
                 break;
-
             case "complete_screen2":
                 this.onCompleteScreen2(context);
                 break;
@@ -155,13 +171,192 @@ export class UIUXHandler extends BaseHandler {
 
         await handleMoodSelected(context, mood);
 
-        // Move to inspiration phase
-        wsManager.sendFiller(context.projectId, 'Searching for UI inspirations matching your mood...');
-        await this.startInspirationPhase(context);
+        // NEW: Move to Brand Identity phase instead of inspiration
+        wsManager.sendFiller(context.projectId, 'Generating Brand Identity...');
+        await this.startBrandIdentityPhase(context);
     }
 
     // ==========================================
-    // PHASE 3: INSPIRATION GALLERY
+    // PHASE 3a: BRAND IDENTITY (strategic/abstract)
+    // ==========================================
+
+    private async startBrandIdentityPhase(context: Context): Promise<void> {
+        log('[Phase 3a] Starting Brand Identity phase...');
+
+        try {
+            wsManager.sendFiller(context.projectId, 'Analyzing your project to define your brand identity...');
+
+            const brandIdentity = await generateBrandIdentity(context);
+
+            if (context.planningData?.uiuxData) {
+                context.planningData.uiuxData.brandIdentity = brandIdentity;
+                context.planningData.uiuxData.currentPhase = 'brand_identity';
+            }
+
+            // Send to client
+            wsManager.broadcast(context.projectId, {
+                type: "brand_identity_generated",
+                timestamp: new Date().toISOString(),
+                data: {
+                    brandIdentity,
+                    message: `🧬 **Brand Identity Defined**\n\nI've established your strategic brand foundation.\n\n**Archetype:** ${brandIdentity.archetype}\n**Energy:** ${brandIdentity.energyLevel.score}/10\n**Trust:** ${brandIdentity.trustLevel.score}/10\n\nReview the identity below. You can refine any aspect before locking it in. Once locked, I'll generate the exact design values.`
+                }
+            });
+
+            log('[Phase 3a] Brand Identity generated and sent to client');
+
+        } catch (error: any) {
+            log(`Error in Brand Identity phase: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error generating Brand Identity: ${error.message}`
+            });
+        }
+    }
+
+    private async onBrandIdentityFeedback(context: Context, event: Event): Promise<void> {
+        const payload = event.payload.payload || event.payload;
+        const feedback = payload as BrandIdentityFeedback;
+
+        log(`Brand Identity feedback: aspect=${feedback.aspect}`);
+
+        try {
+            wsManager.sendFiller(context.projectId, 'Refining Brand Identity...');
+
+            const updated = await handleBrandIdentityFeedback(context, feedback);
+
+            if (context.planningData?.uiuxData) {
+                context.planningData.uiuxData.brandIdentity = updated;
+            }
+
+            wsManager.broadcast(context.projectId, {
+                type: "brand_identity_updated",
+                timestamp: new Date().toISOString(),
+                data: {
+                    brandIdentity: updated,
+                    message: `✅ Brand Identity updated! Review the changes below.`
+                }
+            });
+
+        } catch (error: any) {
+            log(`Error handling Brand Identity feedback: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error refining Brand Identity: ${error.message}`
+            });
+        }
+    }
+
+    private async onLockBrandIdentity(context: Context): Promise<void> {
+        log('[Phase 3a] Locking Brand Identity, advancing to Brand DNA...');
+
+        try {
+            await lockBrandIdentity(context);
+
+            wsManager.sendMessage(context.projectId, {
+                message: '✅ **Brand Identity Locked!**\n\nNow generating your Brand DNA — the exact design values from your identity...'
+            });
+
+            // Move to Brand DNA phase (Stage 2)
+            await this.startBrandDNAPhase(context);
+
+        } catch (error: any) {
+            log(`Error locking Brand Identity: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error: ${error.message}`
+            });
+        }
+    }
+
+    // ==========================================
+    // PHASE 3b: BRAND DNA (concrete/exact values)
+    // ==========================================
+
+    private async startBrandDNAPhase(context: Context): Promise<void> {
+        log('[Phase 3b] Starting Brand DNA phase...');
+
+        try {
+            wsManager.sendFiller(context.projectId, 'Translating brand identity into exact design values...');
+
+            const brandDNA = await generateBrandDNA(context);
+
+            if (context.planningData?.uiuxData) {
+                context.planningData.uiuxData.brandDNA = brandDNA;
+                context.planningData.uiuxData.currentPhase = 'brand_dna';
+            }
+
+            wsManager.broadcast(context.projectId, {
+                type: "brand_dna_generated",
+                timestamp: new Date().toISOString(),
+                data: {
+                    brandDNA,
+                    message: `🎨 **Brand DNA Generated**\n\nI've translated your brand identity into exact design values.\n\n**Primary Color:** ${brandDNA.color.primary}\n**Font:** ${brandDNA.typography.primary}\n**Mode:** ${brandDNA.color.mode}\n\nReview and refine any value. Once locked, these will govern every screen generated.`
+                }
+            });
+
+            log('[Phase 3b] Brand DNA generated and sent to client');
+
+        } catch (error: any) {
+            log(`Error in Brand DNA phase: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error generating Brand DNA: ${error.message}`
+            });
+        }
+    }
+
+    private async onBrandDNAFeedback(context: Context, event: Event): Promise<void> {
+        const payload = event.payload.payload || event.payload;
+        const feedback = payload as BrandDNAFeedback;
+
+        log(`Brand DNA feedback: aspect=${feedback.aspect}`);
+
+        try {
+            wsManager.sendFiller(context.projectId, 'Refining Brand DNA...');
+
+            const updated = await handleBrandDNAFeedback(context, feedback);
+
+            if (context.planningData?.uiuxData) {
+                context.planningData.uiuxData.brandDNA = updated;
+            }
+
+            wsManager.broadcast(context.projectId, {
+                type: "brand_dna_updated",
+                timestamp: new Date().toISOString(),
+                data: {
+                    brandDNA: updated,
+                    message: `✅ Brand DNA updated! Review the changes below.`
+                }
+            });
+
+        } catch (error: any) {
+            log(`Error handling Brand DNA feedback: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error refining Brand DNA: ${error.message}`
+            });
+        }
+    }
+
+    private async onLockBrandDNA(context: Context): Promise<void> {
+        log('[Phase 3b] Locking Brand DNA, advancing to Inspiration...');
+
+        try {
+            await lockBrandDNA(context);
+
+            wsManager.sendMessage(context.projectId, {
+                message: '✅ **Brand DNA Locked!**\n\nMoving to inspiration gallery — I\'ll filter references to match your brand archetype...'
+            });
+
+            // Move to inspiration phase
+            await this.startInspirationPhase(context);
+
+        } catch (error: any) {
+            log(`Error locking Brand DNA: ${error.message}`);
+            wsManager.sendMessage(context.projectId, {
+                message: `❌ Error: ${error.message}`
+            });
+        }
+    }
+
+    // ==========================================
+    // PHASE 4: INSPIRATION GALLERY
     // ==========================================
 
     private async startInspirationPhase(context: Context): Promise<void> {
@@ -205,7 +400,7 @@ export class UIUXHandler extends BaseHandler {
     }
 
     // ==========================================
-    // PHASE 4: SCREEN GENERATION (PARALLEL)
+    // PHASE 5: SCREEN GENERATION (PARALLEL)
     // ==========================================
 
     private async startScreenPhase(context: Context): Promise<void> {
@@ -369,7 +564,7 @@ export class UIUXHandler extends BaseHandler {
     }
 
     // ==========================================
-    // PHASE 5: DESIGN TOKEN EXTRACTION
+    // PHASE 6: DESIGN TOKEN EXTRACTION
     // ==========================================
 
     private async startTokenExtractionPhase(context: Context): Promise<void> {

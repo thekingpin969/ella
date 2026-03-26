@@ -954,19 +954,61 @@ export async function handleScreenFeedback(
 /**
  * Build context for the design brief LLM call
  */
-function buildBriefContext(context: Context, screen: KeyScreen, userDescription?: string, referenceHTML?: string): string {
+function buildBriefContext(
+    context: Context,
+    screen: KeyScreen,
+    userDescription?: string,
+    referenceHTML?: string
+): string {
     const uiuxData = context.planningData?.uiuxData;
-
-    let ctx = `# Design Brief Request
-
-## Screen: ${screen.name}
+    const mood = uiuxData?.mood || 'minimal';
+    // Build context string
+    let ctx = `
+# Screen to Design: ${screen.name}
 Type: ${screen.type}
-Description: ${screen.description}
 Features: ${screen.features.join(', ')}
 
-## Design Direction
-Mood: ${uiuxData?.mood || 'minimal'}
+# Overall Mood
+${mood}
+
+# Brand Identity & Design System
+${uiuxData?.brandIdentity ? JSON.stringify(uiuxData.brandIdentity, null, 2) : 'None established.'}
 `;
+
+    // Inject Brand DNA — exact design values the LLM MUST use
+    if (uiuxData?.brandDNA) {
+        const dna = uiuxData.brandDNA;
+        ctx += `
+# Brand DNA — Exact Design Values (USE THESE — do not invent colors or fonts)
+Mode: ${dna.color.mode}
+Colors:
+  Primary:    ${dna.color.primary}
+  Secondary:  ${dna.color.secondary}
+  Accent:     ${dna.color.accent}
+  Background: ${dna.color.background}
+  Surface:    ${dna.color.surface}
+  Text:       ${dna.color.text.primary} / muted: ${dna.color.text.secondary}
+  Error:      ${dna.color.semantic.error}  Success: ${dna.color.semantic.success}  Warning: ${dna.color.semantic.warning}
+Typography:
+  Font:        ${dna.typography.primary}
+  Weights:     ${dna.typography.weightRange}
+  Size:        ${dna.typography.sizeDirection}
+Shape:
+  Border Radius: ${dna.shape.borderRadius} — ${dna.shape.borderRadiusValue}
+Spacing:
+  Density:   ${dna.spacing.density}
+  Base Unit: ${dna.spacing.baseUnit}
+Elevation:
+  Shadow:  ${dna.elevation.shadowStyle}
+  Borders: ${dna.elevation.borderUsage}
+Iconography: ${dna.iconography.style} style, ${dna.iconography.family} family
+Motion:
+  Fast:   ${dna.motion.durationFast}
+  Normal: ${dna.motion.durationNormal}
+  Slow:   ${dna.motion.durationSlow}
+  Easing: ${dna.motion.easing}
+`;
+    }
 
     if (uiuxData?.tasteAnalysis) {
         ctx += `
@@ -1007,6 +1049,30 @@ function buildDesignPromptInput(
     let prompt = `# Design Brief\n\n${JSON.stringify(brief, null, 2)}\n\n`;
     prompt += `# Variant: ${variantLabel}\n`;
     prompt += `# Mood: ${uiuxData?.mood || 'minimal'}\n`;
+
+    // Inject Brand DNA — the LLM MUST derive colorDirectives/typographyDirectives from these
+    if (uiuxData?.brandDNA) {
+        const dna = uiuxData.brandDNA;
+        prompt += `\n# Brand DNA — Exact Design Values (MANDATORY — use these for all colorDirectives and typographyDirectives)\n`;
+        prompt += `Mode: ${dna.color.mode}\n`;
+        prompt += `Colors:\n`;
+        prompt += `  Primary:    ${dna.color.primary}\n`;
+        prompt += `  Secondary:  ${dna.color.secondary}\n`;
+        prompt += `  Accent:     ${dna.color.accent}\n`;
+        prompt += `  Background: ${dna.color.background}\n`;
+        prompt += `  Surface:    ${dna.color.surface}\n`;
+        prompt += `  Text:       ${dna.color.text.primary} / muted: ${dna.color.text.secondary}\n`;
+        prompt += `  Error: ${dna.color.semantic.error}  Success: ${dna.color.semantic.success}  Warning: ${dna.color.semantic.warning}\n`;
+        prompt += `Typography:\n`;
+        prompt += `  Font:    ${dna.typography.primary}\n`;
+        prompt += `  Weights: ${dna.typography.weightRange}\n`;
+        prompt += `  Size:    ${dna.typography.sizeDirection}\n`;
+        prompt += `Shape: ${dna.shape.borderRadius} — ${dna.shape.borderRadiusValue}\n`;
+        prompt += `Spacing: ${dna.spacing.density} density, base unit ${dna.spacing.baseUnit}\n`;
+        prompt += `Shadow:  ${dna.elevation.shadowStyle}\n`;
+        prompt += `Icons:   ${dna.iconography.style} / ${dna.iconography.family}\n`;
+        prompt += `Motion:  fast=${dna.motion.durationFast}  normal=${dna.motion.durationNormal}  easing=${dna.motion.easing}\n`;
+    }
 
     if (uiuxData?.tasteAnalysis) {
         prompt += `\n# Taste Analysis\nDesign Signature: ${uiuxData.tasteAnalysis.designSignature}\n`;

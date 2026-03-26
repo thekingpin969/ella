@@ -10,6 +10,10 @@ export type WSMessagetType =
   | "planning_complete"
   // Screen 2: UI/UX message types
   | "mood_selection"
+  | "brand_identity_generated"
+  | "brand_identity_updated"
+  | "brand_dna_generated"
+  | "brand_dna_updated"
   | "inspiration_gallery"
   | "taste_analysis"
   | "screen_preview"

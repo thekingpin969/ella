@@ -49,6 +49,12 @@ export async function extractDesignTokens(context: Context): Promise<DesignToken
 
 ## Combined Styles from Selected Screens:
 ${combinedCSS.substring(0, 5000)}
+
+## Brand Identity (strategic context)
+${uiuxData.brandIdentity ? JSON.stringify(uiuxData.brandIdentity, null, 2) : 'None'}
+
+## Brand DNA (source of truth for exact values)
+${uiuxData.brandDNA ? JSON.stringify(uiuxData.brandDNA, null, 2) : 'None'}
 `;
 
     const response = await callLLMWithLogging(
@@ -62,6 +68,54 @@ ${combinedCSS.substring(0, 5000)}
     );
 
     const tokens = safeJSONParse<DesignTokens>(response.content, getDefaultDesignTokens());
+
+    // Enforce border-radius token consistency based on Brand DNA shapeLanguage if available
+    // Brand DNA (Stage 2) is source of truth — use its borderRadius value
+    if (uiuxData.brandDNA?.shape?.borderRadius) {
+        tokens.borderRadius = getBorderRadiusForShapeLanguage(uiuxData.brandDNA.shape.borderRadius);
+    } else if (uiuxData.brandIdentity) {
+        // Fallback: derive from personality traits if DNA not yet set
+        const traits = uiuxData.brandIdentity.personalityTraits.join(' ').toLowerCase();
+        const isPlayful = /play|fun|energet|vibrant/.test(traits);
+        const isPrecise = /precis|expert|analyt|technic/.test(traits);
+        const shapeKey = isPlayful ? 'rounded' : isPrecise ? 'sharp' : 'soft';
+        tokens.borderRadius = getBorderRadiusForShapeLanguage(shapeKey);
+    }
+
+    // Enforce color tokens from Brand DNA if available
+    if (uiuxData.brandDNA?.color) {
+        const dna = uiuxData.brandDNA;
+        tokens.colors.primary = dna.color.primary;
+        tokens.colors.background = dna.color.background;
+        tokens.colors.surface = dna.color.surface;
+        if (dna.color.accent) tokens.colors.accent = dna.color.accent;
+        tokens.colors.error = dna.color.semantic.error;
+        tokens.colors.success = dna.color.semantic.success;
+        tokens.colors.warning = dna.color.semantic.warning;
+    }
+
+    // Enforce typography from Brand DNA if available
+    if (uiuxData.brandDNA?.typography?.primary) {
+        tokens.typography.fontFamily.sans = `'${uiuxData.brandDNA.typography.primary}', -apple-system, BlinkMacSystemFont, sans-serif`;
+    }
+
+    // Enforce motion from Brand DNA if available
+    if (uiuxData.brandDNA?.motion) {
+        const motion = uiuxData.brandDNA.motion;
+        tokens.animation = {
+            duration: {
+                fast: motion.durationFast,
+                normal: motion.durationNormal,
+                slow: motion.durationSlow
+            },
+            easing: {
+                default: motion.easing,
+                in: motion.easing,
+                out: motion.easing,
+                inOut: motion.easing
+            }
+        };
+    }
 
     // Cache the result
     setCachedUIUXStage(context, UIUXCacheKey.DESIGN_TOKENS, tokens);
@@ -251,6 +305,63 @@ function getDefaultDesignTokens(): DesignTokens {
             }
         }
     };
+}
+
+/**
+ * Maps the abstract BrandDNA shape language into concrete, consistent border-radius tokens.
+ */
+export function getBorderRadiusForShapeLanguage(shapeLanguage: string) {
+    switch (shapeLanguage) {
+        case 'sharp':
+            return {
+                none: '0',
+                sm: '0',
+                md: '0',
+                lg: '0',
+                xl: '0',
+                full: '0'
+            };
+
+        case 'slightly-rounded':
+            return {
+                none: '0',
+                sm: '2px',
+                md: '4px',
+                lg: '6px',
+                xl: '8px',
+                full: '9999px'
+            };
+
+        case 'rounded':
+            return {
+                none: '0',
+                sm: '4px',
+                md: '8px',
+                lg: '12px',
+                xl: '16px',
+                full: '9999px'
+            };
+
+        case 'pill':
+            return {
+                none: '0',
+                sm: '8px',
+                md: '12px',
+                lg: '16px',
+                xl: '24px',
+                full: '9999px'
+            };
+
+        default:
+            return {
+                none: '0',
+                sm: '4px',
+                md: '8px',
+                lg: '12px',
+                xl: '16px',
+                full: '9999px'
+            };
+    }
 }
 
 
